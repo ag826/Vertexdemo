@@ -1,5 +1,5 @@
 import { Briefcase, ChevronRight, Users } from 'lucide-react';
-import type { Contact } from '../App';
+import type { Contact } from '../types';
 
 interface ContactListProps {
   contacts: Contact[];

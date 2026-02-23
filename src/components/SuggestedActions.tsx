@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Mail, Calendar, Phone, UserPlus, Share2, Clock, ChevronRight, Zap } from 'lucide-react';
-import type { SuggestedAction } from '../App';
+import type { SuggestedAction } from '../types';
 import { TranscriptModal } from './TranscriptModal';
 
 interface SuggestedActionsProps {

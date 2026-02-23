@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft, Briefcase, MapPin, Linkedin, Clock, Lightbulb, AlertCircle, Edit2, Check, X, MessageSquare, Link as LinkIcon, Users, Globe, Mail, Hash, ChevronRight } from 'lucide-react';
-import type { Contact, Insight } from '../App';
+import type { Contact, Insight } from '../types';
 import { TranscriptModal } from './TranscriptModal';
 import { SuggestedActions } from './SuggestedActions';
 
@@ -14,6 +14,11 @@ export function PersonaCard({ contact, onBack, onUpdateNotes }: PersonaCardProps
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [editedNotes, setEditedNotes] = useState(contact.notes);
   const [selectedInsight, setSelectedInsight] = useState<{ insight: Insight; text: string } | null>(null);
+  const profileHref = !contact.linkedInUrl
+    ? null
+    : contact.linkedInUrl.startsWith('http://') || contact.linkedInUrl.startsWith('https://')
+      ? contact.linkedInUrl
+      : `https://${contact.linkedInUrl}`;
 
   const handleSaveNotes = () => {
     onUpdateNotes(contact.id, editedNotes);
@@ -116,15 +121,17 @@ export function PersonaCard({ contact, onBack, onUpdateNotes }: PersonaCardProps
               </div>
             </div>
 
-            <a
-              href={`https://${contact.linkedInUrl}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-blue-400 to-purple-400 text-white py-3 rounded-lg hover:from-blue-500 hover:to-purple-500 transition-all font-medium shadow-lg"
-            >
-              <Linkedin className="w-5 h-5" />
-              <span>View LinkedIn Profile</span>
-            </a>
+            {profileHref && (
+              <a
+                href={profileHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-blue-400 to-purple-400 text-white py-3 rounded-lg hover:from-blue-500 hover:to-purple-500 transition-all font-medium shadow-lg"
+              >
+                <Linkedin className="w-5 h-5" />
+                <span>View External Profile</span>
+              </a>
+            )}
           </div>
         </div>
 

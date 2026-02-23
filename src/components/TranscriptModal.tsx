@@ -1,5 +1,5 @@
 import { X, Calendar, Clock, MapPin, MessageSquare, Video, Phone, Mail, Linkedin, MessageCircle, Sparkles } from 'lucide-react';
-import type { TranscriptDetail } from '../App';
+import type { TranscriptDetail } from '../types';
 
 interface TranscriptModalProps {
   isOpen: boolean;
