@@ -20,8 +20,10 @@ const {
   getSession,
   signOut,
 } = require('./auth');
-const { withDb, loadDb, nowIso } = require('./store');
+const { withDb, loadDb, saveDb, nowIso } = require('./store');
 const { processRecording, hydrateContact } = require('./pipeline');
+const { autoBuildContactFromRecording } = require('./recordingAutomation');
+const { transcribeAudioDataUrl } = require('./ai');
 const {
   SUPPORTED_PROVIDERS,
   listIntegrations,
@@ -347,6 +349,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       const contact = withDb((db) => {
+        let transcriptId;
         const entry = {
           id: randomUUID(),
           userId: auth.user.id,
@@ -363,6 +366,7 @@ const server = http.createServer(async (req, res) => {
             text: requiredString(fact.text),
             source: fact.source || 'Conversation',
             category: fact.category || 'Professional',
+            transcriptId,
             createdAt: nowIso(),
           })).filter((fact) => fact.text) : [],
           funFacts: Array.isArray(body.funFacts) ? body.funFacts.map((fact) => ({
@@ -370,6 +374,7 @@ const server = http.createServer(async (req, res) => {
             text: requiredString(fact.text),
             source: fact.source || 'Conversation',
             category: fact.category || 'Interest',
+            transcriptId,
             createdAt: nowIso(),
           })).filter((fact) => fact.text) : [],
           suggestedActions: Array.isArray(body.suggestedActions) ? body.suggestedActions.map((action) => ({
@@ -379,6 +384,7 @@ const server = http.createServer(async (req, res) => {
             description: requiredString(action.description),
             priority: action.priority || 'medium',
             dueDate: action.dueDate || undefined,
+            transcriptId,
             createdAt: nowIso(),
           })).filter((action) => action.title && action.description) : [],
           conversationDuration: requiredString(body.conversationDuration) || '0:00',
@@ -395,6 +401,32 @@ const server = http.createServer(async (req, res) => {
             (item) => item.id === body.recordingId && item.userId === auth.user.id,
           );
           if (recording) {
+            if (recording.transcriptText || entry.notes) {
+              const transcript = {
+                id: randomUUID(),
+                platform: 'In-Person',
+                occasion: 'Networking conversation',
+                date: new Date().toLocaleDateString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                }),
+                time: new Date().toLocaleTimeString('en-US', {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                }),
+                location: 'Conference venue',
+                fullTranscript: recording.transcriptText || entry.notes,
+                highlightedText: entry.keyFacts[0]?.text || entry.funFacts[0]?.text || entry.notes || 'Conversation highlight',
+                createdAt: nowIso(),
+              };
+              db.transcripts.push(transcript);
+              transcriptId = transcript.id;
+              entry.keyFacts = entry.keyFacts.map((fact) => ({ ...fact, transcriptId }));
+              entry.funFacts = entry.funFacts.map((fact) => ({ ...fact, transcriptId }));
+              entry.suggestedActions = entry.suggestedActions.map((action) => ({ ...action, transcriptId }));
+            }
+
             recording.contactId = entry.id;
             recording.status = 'completed';
             recording.updatedAt = nowIso();
@@ -628,6 +660,135 @@ const server = http.createServer(async (req, res) => {
       }
 
       sendJson(res, 200, { recording: updated }, correlationId);
+      return;
+    }
+
+    if (pathname.startsWith('/api/recordings/') && pathname.endsWith('/autobuild') && req.method === 'POST') {
+      const recordingId = pathname.split('/')[3];
+      try {
+        const result = await autoBuildContactFromRecording(auth.user.id, recordingId, correlationId);
+        const db = loadDb();
+        const transcriptsById = getTranscriptsById(db);
+        const hydratedContact = hydrateContact(
+          db.contacts.find((item) => item.id === result.contact.id && item.userId === auth.user.id),
+          transcriptsById,
+        );
+        sendJson(res, 200, { recording: result.recording, contact: hydratedContact }, correlationId);
+      } catch (error) {
+        sendJson(res, error.statusCode || 500, { error: error.message }, correlationId);
+      }
+      return;
+    }
+
+    if (pathname.startsWith('/api/recordings/') && pathname.endsWith('/transcribe') && req.method === 'POST') {
+      const recordingId = pathname.split('/')[3];
+
+      try {
+        const db = loadDb();
+        const recording = db.recordings.find((item) => item.id === recordingId && item.userId === auth.user.id);
+        if (!recording) {
+          notFound(res, correlationId);
+          return;
+        }
+
+        if (!recording.audioUrl) {
+          sendJson(res, 400, { error: 'Recording audio is missing' }, correlationId);
+          return;
+        }
+
+        const transcriptText = (await transcribeAudioDataUrl(recording.audioUrl, correlationId))
+          || recording.transcriptText
+          || 'Transcription unavailable. You can enter notes manually.';
+
+        recording.transcriptText = transcriptText;
+        recording.updatedAt = nowIso();
+
+        db.auditEvents.push({
+          id: randomUUID(),
+          userId: auth.user.id,
+          type: 'recording.transcribed',
+          entityType: 'recording',
+          entityId: recording.id,
+          data: { transcriptLength: transcriptText.length },
+          createdAt: nowIso(),
+        });
+
+        saveDb(db);
+
+        sendJson(res, 200, { recording, transcriptText }, correlationId);
+      } catch (error) {
+        sendJson(res, error.statusCode || 500, { error: error.message }, correlationId);
+      }
+      return;
+    }
+
+    if (pathname.startsWith('/api/recordings/') && pathname.endsWith('/link-contact') && req.method === 'POST') {
+      const recordingId = pathname.split('/')[3];
+      const body = await parseJsonBody(req);
+      const contactId = String(body.contactId || '').trim();
+
+      if (!contactId) {
+        sendJson(res, 400, { error: 'contactId is required' }, correlationId);
+        return;
+      }
+
+      const linkResult = withDb((db) => {
+        const recording = db.recordings.find((item) => item.id === recordingId && item.userId === auth.user.id);
+        if (!recording) {
+          return { error: 'recording_not_found' };
+        }
+
+        const contact = db.contacts.find((item) => item.id === contactId && item.userId === auth.user.id);
+        if (!contact) {
+          return { error: 'contact_not_found' };
+        }
+
+        const transcriptText = String(body.transcriptText || recording.transcriptText || '').trim();
+        if (transcriptText) {
+          recording.transcriptText = transcriptText;
+        }
+
+        const appendToNotes = body.appendToNotes !== false;
+        if (appendToNotes && recording.transcriptText) {
+          const stamp = new Date().toLocaleString('en-US');
+          const chunk = `[Recording ${stamp}]\n${recording.transcriptText}`;
+          contact.notes = contact.notes ? `${contact.notes}\n\n${chunk}` : chunk;
+          contact.updatedAt = nowIso();
+        }
+
+        recording.contactId = contact.id;
+        recording.status = 'completed';
+        recording.updatedAt = nowIso();
+
+        db.auditEvents.push({
+          id: randomUUID(),
+          userId: auth.user.id,
+          type: 'recording.linked.contact',
+          entityType: 'recording',
+          entityId: recording.id,
+          data: { contactId: contact.id, appendToNotes },
+          createdAt: nowIso(),
+        });
+
+        return { recording, contactId: contact.id };
+      });
+
+      if (linkResult.error === 'recording_not_found') {
+        notFound(res, correlationId);
+        return;
+      }
+      if (linkResult.error === 'contact_not_found') {
+        sendJson(res, 404, { error: 'Contact not found' }, correlationId);
+        return;
+      }
+
+      const db = loadDb();
+      const transcriptsById = getTranscriptsById(db);
+      const hydratedContact = hydrateContact(
+        db.contacts.find((item) => item.id === linkResult.contactId && item.userId === auth.user.id),
+        transcriptsById,
+      );
+      sendJson(res, 200, { recording: linkResult.recording, contact: hydratedContact }, correlationId);
       return;
     }
 

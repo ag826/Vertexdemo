@@ -48,6 +48,7 @@ npm run build
 - `GET /api/insights/:id/transcript`
 - `POST /api/recordings`
 - `PUT /api/recordings/:id/audio`
+- `POST /api/recordings/:id/autobuild`
 - `POST /api/recordings/:id/process`
 - `GET /api/recordings/:id`
 - `GET /api/health`
@@ -153,7 +154,9 @@ curl -s -X POST http://localhost:4000/api/integrations/pending-matches/PENDING_I
 - Sync ingests both contacts and message history (when provider scopes allow it).
 - Identity resolution order: exact provider ID -> email match -> username match -> high-confidence name similarity -> pending user prompt.
 - Pending-match resolution links previously unassigned synced messages to the selected contact.
-- The AI recording pipeline is deterministic/stubbed in `server/pipeline.js` with a pluggable structure for real transcription/extraction providers.
+- Recording now supports both manual persona creation and AI auto-build mode.
+- Auto-build endpoint transcribes audio (OpenAI, optional), extracts a persona, and creates a linked contact.
+- LinkedIn enrichment is optional and uses Proxycurl when API key is present.
 - Telegram Bot API cannot globally enumerate all users; this integration requires either incoming updates or explicit chat context.
 
 ## Google OAuth setup (optional)
@@ -168,3 +171,14 @@ export FRONTEND_APP_URL=\"http://localhost:3000\"
 ```
 
 If Google variables are missing, the app prompts for username/password registration/login.
+
+## AI + LinkedIn enrichment setup (optional)
+
+Set these before running `npm run api` if you want real transcription/AI persona extraction and LinkedIn enrichment:
+
+```bash
+export OPENAI_API_KEY=\"...\"
+export OPENAI_TRANSCRIBE_MODEL=\"whisper-1\"      # optional
+export OPENAI_CHAT_MODEL=\"gpt-4o-mini\"          # optional
+export PROXYCURL_API_KEY=\"...\"                  # optional LinkedIn enrich
+```

@@ -1,8 +1,18 @@
 import { useState } from 'react';
-import { ArrowLeft, Briefcase, MapPin, Linkedin, Clock, Lightbulb, AlertCircle, Edit2, Check, X, MessageSquare, Link as LinkIcon, Users, Globe, Mail, Hash, ChevronRight } from 'lucide-react';
-import type { Contact, Insight } from '../types';
+import {
+  ArrowLeft,
+  Briefcase,
+  CalendarCheck2,
+  Edit2,
+  Check,
+  X,
+  MapPin,
+  Link as LinkIcon,
+  Clock3,
+  ChevronRight,
+} from 'lucide-react';
+import type { Contact, Insight, SuggestedAction } from '../types';
 import { TranscriptModal } from './TranscriptModal';
-import { SuggestedActions } from './SuggestedActions';
 
 interface PersonaCardProps {
   contact: Contact;
@@ -13,7 +23,19 @@ interface PersonaCardProps {
 export function PersonaCard({ contact, onBack, onUpdateNotes }: PersonaCardProps) {
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [editedNotes, setEditedNotes] = useState(contact.notes);
-  const [selectedInsight, setSelectedInsight] = useState<{ insight: Insight; text: string } | null>(null);
+  const [selectedInsight, setSelectedInsight] = useState<{ transcript: Insight['transcript']; text: string } | null>(null);
+  const [selectedAction, setSelectedAction] = useState<SuggestedAction | null>(null);
+  const [openSections, setOpenSections] = useState({
+    keyFacts: true,
+    funFacts: false,
+    actions: true,
+    notes: true,
+  });
+
+  const toggleSection = (key: keyof typeof openSections) => {
+    setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   const profileHref = !contact.linkedInUrl
     ? null
     : contact.linkedInUrl.startsWith('http://') || contact.linkedInUrl.startsWith('https://')
@@ -25,271 +47,155 @@ export function PersonaCard({ contact, onBack, onUpdateNotes }: PersonaCardProps
     setIsEditingNotes(false);
   };
 
-  const handleCancelEdit = () => {
-    setEditedNotes(contact.notes);
-    setIsEditingNotes(false);
-  };
-
-  const getSourceIcon = (source: Insight['source']) => {
-    switch (source) {
-      case 'Conversation':
-        return <MessageSquare className="w-3 h-3" />;
-      case 'LinkedIn':
-        return <LinkIcon className="w-3 h-3" />;
-      case 'Mutual Connection':
-        return <Users className="w-3 h-3" />;
-      case 'Website':
-        return <Globe className="w-3 h-3" />;
-      case 'Social Media':
-        return <Hash className="w-3 h-3" />;
-      case 'Email':
-        return <Mail className="w-3 h-3" />;
-    }
-  };
-
-  const getCategoryColor = (category: Insight['category']) => {
-    switch (category) {
-      case 'Professional':
-        return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
-      case 'Personal':
-        return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
-      case 'Interest':
-        return 'bg-green-500/20 text-green-300 border-green-500/30';
-      case 'Background':
-        return 'bg-slate-500/20 text-slate-300 border-slate-500/30';
-      case 'Goal':
-        return 'bg-orange-500/20 text-orange-300 border-orange-500/30';
-    }
-  };
-
-  const getCategoryIcon = (category: Insight['category']) => {
-    switch (category) {
-      case 'Professional':
-        return '💼';
-      case 'Personal':
-        return '👤';
-      case 'Interest':
-        return '🎯';
-      case 'Background':
-        return '📚';
-      case 'Goal':
-        return '🎯';
-    }
-  };
+  const InsightRow = ({ insight }: { insight: Insight }) => (
+    <button
+      className="vx-contact-row"
+      style={{ padding: 10 }}
+      onClick={() => insight.transcript && setSelectedInsight({ transcript: insight.transcript, text: insight.text })}
+      disabled={!insight.transcript}
+    >
+      <div style={{ minWidth: 0, textAlign: 'left', flex: 1 }}>
+        <div className="vx-body" style={{ fontWeight: 600 }}>{insight.text}</div>
+        <div className="vx-caption" style={{ marginTop: 4 }}>{insight.source} • {insight.category}</div>
+      </div>
+      {insight.transcript && <ChevronRight size={16} color="var(--text-muted)" />}
+    </button>
+  );
 
   return (
-    <div className="min-h-screen bg-slate-950">
-      {/* Header */}
-      <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-10">
-        <div className="max-w-lg mx-auto px-4 py-4">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            <span>Back to contacts</span>
+    <div className="vx-app">
+      <header className="vx-topbar">
+        <div className="vx-topbar-inner">
+          <button onClick={onBack} className="vx-btn vx-btn-ghost">
+            <span className="vx-row"><ArrowLeft size={16} /> Back to contacts</span>
           </button>
         </div>
       </header>
 
-      <div className="max-w-lg mx-auto pb-8">
-        {/* Profile Header with Large Image */}
-        <div className="bg-slate-900 border-b border-slate-800">
-          <div className="px-6 pt-8 pb-6">
-            <div className="flex flex-col items-center text-center mb-6">
-              <img
-                src={contact.profileImage}
-                alt={contact.name}
-                className="w-32 h-32 rounded-full border-4 border-blue-500/30 object-cover mb-4 shadow-lg"
-              />
-              <h1 className="text-white mb-2">{contact.name}</h1>
-              <div className="flex items-center gap-2 text-slate-200 mb-1">
-                <Briefcase className="w-4 h-4 text-blue-400" />
-                <span className="font-medium">{contact.title}</span>
-              </div>
-              <div className="text-slate-400 mb-3">{contact.company}</div>
-              
-              <div className="flex items-center gap-4 text-slate-400 text-sm">
-                <div className="flex items-center gap-1.5">
-                  <MapPin className="w-4 h-4" />
-                  <span>{contact.location}</span>
+      <main className="vx-content" style={{ maxWidth: 760 }}>
+        <div className="vx-col">
+          <section className="vx-section">
+            <div className="vx-row" style={{ alignItems: 'flex-start' }}>
+              <img src={contact.profileImage} alt={contact.name} className="vx-avatar" style={{ width: 64, height: 64 }} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <h1 className="vx-h2">{contact.name}</h1>
+                <div className="vx-row vx-caption" style={{ marginTop: 4 }}>
+                  <Briefcase size={14} />
+                  <span>{contact.title} at {contact.company}</span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4" />
-                  <span>{contact.conversationDuration} talk</span>
+                <div className="vx-row vx-caption" style={{ marginTop: 4 }}>
+                  <MapPin size={14} />
+                  <span>{contact.location}</span>
+                  <span>•</span>
+                  <Clock3 size={14} />
+                  <span>{contact.conversationDuration}</span>
                 </div>
               </div>
             </div>
-
             {profileHref && (
-              <a
-                href={profileHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-blue-400 to-purple-400 text-white py-3 rounded-lg hover:from-blue-500 hover:to-purple-500 transition-all font-medium shadow-lg"
-              >
-                <Linkedin className="w-5 h-5" />
-                <span>View External Profile</span>
+              <a href={profileHref} target="_blank" rel="noopener noreferrer" className="vx-btn" style={{ marginTop: 12, display: 'inline-flex' }}>
+                <span className="vx-row"><LinkIcon size={14} /> Open external profile</span>
               </a>
             )}
-          </div>
-        </div>
-
-        {/* Content Sections */}
-        <div className="px-4 py-6 space-y-4">
-          {/* Suggested Actions */}
-          <SuggestedActions actions={contact.suggestedActions} />
-
-          {/* Things to Know - Most Important */}
-          <section className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 rounded-xl p-6 border border-blue-500/20 shadow-sm backdrop-blur-sm">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-10 h-10 bg-blue-500/30 rounded-full flex items-center justify-center shadow-sm">
-                <AlertCircle className="w-5 h-5 text-blue-400" />
-              </div>
-              <h2 className="text-white font-semibold text-lg">Things to Know</h2>
-            </div>
-            <ul className="space-y-4">
-              {contact.keyFacts.map((insight, index) => (
-                <li key={index}>
-                  <button
-                    onClick={() => insight.transcript && setSelectedInsight({ insight, text: insight.text })}
-                    className={`w-full bg-slate-900/50 rounded-lg p-4 border border-slate-800 shadow-sm backdrop-blur-sm text-left transition-all ${
-                      insight.transcript ? 'hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10 cursor-pointer' : ''
-                    }`}
-                    disabled={!insight.transcript}
-                  >
-                    <div className="flex items-start gap-3 mb-2">
-                      <div className="w-6 h-6 bg-blue-500/30 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <span className="text-blue-300 text-xs font-bold">{index + 1}</span>
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="leading-relaxed font-medium text-slate-200 flex-1">{insight.text}</span>
-                          {insight.transcript && (
-                            <ChevronRight className="w-4 h-4 text-slate-500 flex-shrink-0 mt-1" />
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 ml-9 mt-3 flex-wrap">
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-800/50 rounded-full text-xs text-slate-400">
-                        {getSourceIcon(insight.source)}
-                        <span>{insight.source}</span>
-                      </div>
-                      <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border ${getCategoryColor(insight.category)}`}>
-                        <span>{getCategoryIcon(insight.category)}</span>
-                        <span>{insight.category}</span>
-                      </div>
-                      {insight.transcript && (
-                        <div className="flex items-center gap-1 px-2.5 py-1 bg-blue-500/20 text-blue-300 rounded-full text-xs border border-blue-500/30">
-                          <MessageSquare className="w-3 h-3" />
-                          <span>View context</span>
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
           </section>
 
-          {/* Fun Facts */}
-          <section className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-xl p-6 border border-purple-500/20 shadow-sm backdrop-blur-sm">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-10 h-10 bg-purple-500/30 rounded-full flex items-center justify-center shadow-sm">
-                <Lightbulb className="w-5 h-5 text-purple-400" />
-              </div>
-              <h2 className="text-white font-semibold text-lg">Fun Facts & Interests</h2>
-            </div>
-            <ul className="space-y-4">
-              {contact.funFacts.map((insight, index) => (
-                <li key={index} className="bg-slate-900/50 rounded-lg p-4 border border-slate-800 shadow-sm backdrop-blur-sm">
-                  <div className="flex items-start gap-3 mb-2">
-                    <span className="text-purple-400 text-xl leading-none flex-shrink-0">•</span>
-                    <span className="leading-relaxed font-medium text-slate-200 flex-1">{insight.text}</span>
-                  </div>
-                  <div className="flex items-center gap-2 ml-7 mt-3 flex-wrap">
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-800/50 rounded-full text-xs text-slate-400">
-                      {getSourceIcon(insight.source)}
-                      <span>{insight.source}</span>
-                    </div>
-                    <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border ${getCategoryColor(insight.category)}`}>
-                      <span>{getCategoryIcon(insight.category)}</span>
-                      <span>{insight.category}</span>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          {/* Conversation Notes */}
-          <section className="bg-slate-900/50 rounded-xl p-6 border border-slate-800 shadow-sm backdrop-blur-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-white font-semibold text-lg">Conversation Notes</h2>
-              {!isEditingNotes && (
-                <button
-                  onClick={() => setIsEditingNotes(true)}
-                  className="text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5 text-sm font-medium"
-                >
-                  <Edit2 className="w-4 h-4" />
-                  <span>Edit</span>
-                </button>
-              )}
-            </div>
-
-            {isEditingNotes ? (
-              <div className="space-y-3">
-                <textarea
-                  value={editedNotes}
-                  onChange={(e) => setEditedNotes(e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-slate-700 bg-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent text-slate-200 min-h-[120px] resize-none placeholder-slate-500"
-                  placeholder="Add notes from your conversation..."
-                />
-                <div className="flex gap-2">
+          <section className="vx-section">
+            <button className="vx-btn vx-btn-ghost" onClick={() => toggleSection('actions')} style={{ width: '100%', justifyContent: 'space-between', display: 'flex' }}>
+              <span className="vx-row"><CalendarCheck2 size={16} /> Suggested actions</span>
+              <span>{openSections.actions ? 'Hide' : 'Show'}</span>
+            </button>
+            {openSections.actions && (
+              <div className="vx-col" style={{ marginTop: 10 }}>
+                {contact.suggestedActions.length === 0 && <div className="vx-caption">No suggested actions yet.</div>}
+                {contact.suggestedActions.map((action) => (
                   <button
-                    onClick={handleSaveNotes}
-                    className="flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-blue-400 to-purple-400 text-white rounded-lg hover:from-blue-500 hover:to-purple-500 transition-all font-medium shadow-sm"
+                    key={action.id}
+                    className="vx-contact-row"
+                    style={{ padding: 10 }}
+                    onClick={() => setSelectedAction(action)}
                   >
-                    <Check className="w-4 h-4" />
-                    Save
+                    <div style={{ textAlign: 'left', minWidth: 0, flex: 1 }}>
+                      <div className="vx-body" style={{ fontWeight: 600 }}>{action.title}</div>
+                      <div className="vx-caption" style={{ marginTop: 4 }}>{action.description}</div>
+                    </div>
+                    <span className="vx-badge">{action.priority}</span>
                   </button>
-                  <button
-                    onClick={handleCancelEdit}
-                    className="flex items-center gap-1.5 px-5 py-2.5 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors font-medium border border-slate-700"
-                  >
-                    <X className="w-4 h-4" />
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-                <p className="text-slate-300 leading-relaxed whitespace-pre-wrap">
-                  {contact.notes || 'No notes added yet.'}
-                </p>
+                ))}
               </div>
             )}
           </section>
 
-          {/* Date Added */}
-          <div className="text-center text-slate-500 text-sm pt-2">
-            Added {new Date(contact.dateAdded).toLocaleDateString('en-US', {
-              month: 'long',
-              day: 'numeric',
-              year: 'numeric'
-            })}
-          </div>
-        </div>
-      </div>
+          <section className="vx-section">
+            <button className="vx-btn vx-btn-ghost" onClick={() => toggleSection('keyFacts')} style={{ width: '100%', justifyContent: 'space-between', display: 'flex' }}>
+              <span>Key facts</span>
+              <span>{openSections.keyFacts ? 'Hide' : 'Show'}</span>
+            </button>
+            {openSections.keyFacts && (
+              <div className="vx-col" style={{ marginTop: 10 }}>
+                {contact.keyFacts.map((insight) => <InsightRow key={insight.id || insight.text} insight={insight} />)}
+              </div>
+            )}
+          </section>
 
-      {/* Transcript Modal */}
-      {selectedInsight && selectedInsight.insight.transcript && (
+          <section className="vx-section">
+            <button className="vx-btn vx-btn-ghost" onClick={() => toggleSection('funFacts')} style={{ width: '100%', justifyContent: 'space-between', display: 'flex' }}>
+              <span>Fun facts</span>
+              <span>{openSections.funFacts ? 'Hide' : 'Show'}</span>
+            </button>
+            {openSections.funFacts && (
+              <div className="vx-col" style={{ marginTop: 10 }}>
+                {contact.funFacts.map((insight) => <InsightRow key={insight.id || insight.text} insight={insight} />)}
+              </div>
+            )}
+          </section>
+
+          <section className="vx-section">
+            <button className="vx-btn vx-btn-ghost" onClick={() => toggleSection('notes')} style={{ width: '100%', justifyContent: 'space-between', display: 'flex' }}>
+              <span>Conversation notes</span>
+              <span>{openSections.notes ? 'Hide' : 'Show'}</span>
+            </button>
+            {openSections.notes && (
+              <div style={{ marginTop: 10 }}>
+                {isEditingNotes ? (
+                  <div className="vx-col">
+                    <textarea className="vx-textarea" value={editedNotes} onChange={(e) => setEditedNotes(e.target.value)} />
+                    <div className="vx-row">
+                      <button className="vx-btn vx-btn-primary" onClick={handleSaveNotes}>
+                        <span className="vx-row"><Check size={14} /> Save</span>
+                      </button>
+                      <button className="vx-btn" onClick={() => { setEditedNotes(contact.notes); setIsEditingNotes(false); }}>
+                        <span className="vx-row"><X size={14} /> Cancel</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="vx-col">
+                    <p className="vx-body">{contact.notes || 'No notes yet.'}</p>
+                    <button className="vx-btn" onClick={() => setIsEditingNotes(true)}>
+                      <span className="vx-row"><Edit2 size={14} /> Edit notes</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+
+      {selectedInsight?.transcript && (
         <TranscriptModal
           isOpen={true}
           onClose={() => setSelectedInsight(null)}
-          transcript={selectedInsight.insight.transcript}
+          transcript={selectedInsight.transcript}
           insightText={selectedInsight.text}
+        />
+      )}
+      {selectedAction?.transcript && (
+        <TranscriptModal
+          isOpen={true}
+          onClose={() => setSelectedAction(null)}
+          transcript={selectedAction.transcript}
+          insightText={selectedAction.title}
         />
       )}
     </div>

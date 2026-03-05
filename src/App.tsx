@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, Plus } from 'lucide-react';
+import { Home, Mic, Search, Settings, LogOut } from 'lucide-react';
 import { RecordingView } from './components/RecordingView';
 import { PersonaCard } from './components/PersonaCard';
 import { ContactList } from './components/ContactList';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { PersonaCreatorView } from './components/PersonaCreatorView';
+import { RecordingReviewView } from './components/RecordingReviewView';
 import type { Contact, User } from './types';
 import {
   createContact,
@@ -18,6 +19,8 @@ import {
   registerWithPassword,
   setStoredToken,
   signOut,
+  transcribeRecording,
+  linkRecordingToContact,
   updateContactNotes,
   uploadRecordingMedia,
 } from './lib/api';
@@ -25,7 +28,11 @@ import {
 interface DraftRecording {
   id: string;
   durationSeconds: number;
+  transcriptText: string;
 }
+
+type MainTab = 'contacts' | 'record' | 'settings';
+type FlowView = 'list' | 'recording' | 'reviewRecording' | 'createPersona' | 'persona';
 
 async function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -52,7 +59,8 @@ export default function App() {
     local: true,
   });
 
-  const [currentView, setCurrentView] = useState<'list' | 'recording' | 'createPersona' | 'persona'>('list');
+  const [tab, setTab] = useState<MainTab>('contacts');
+  const [currentView, setCurrentView] = useState<FlowView>('list');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -60,6 +68,7 @@ export default function App() {
   const [isContactsLoading, setIsContactsLoading] = useState(false);
   const [isRecordingProcessing, setIsRecordingProcessing] = useState(false);
   const [isCreatingPersona, setIsCreatingPersona] = useState(false);
+  const [isLinkingRecording, setIsLinkingRecording] = useState(false);
   const [draftRecording, setDraftRecording] = useState<DraftRecording | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -122,16 +131,23 @@ export default function App() {
   }, [refreshContacts]);
 
   useEffect(() => {
-    if (!token) {
+    if (!token || tab !== 'contacts' || currentView !== 'list') {
       return;
     }
-
     const timeout = setTimeout(() => {
       refreshContacts(token, searchQuery);
-    }, 250);
-
+    }, 200);
     return () => clearTimeout(timeout);
-  }, [searchQuery, token, refreshContacts]);
+  }, [searchQuery, token, refreshContacts, tab, currentView]);
+
+  useEffect(() => {
+    if (tab === 'record' && currentView === 'list') {
+      setCurrentView('recording');
+    }
+    if (tab !== 'record' && currentView === 'recording') {
+      setCurrentView('list');
+    }
+  }, [tab, currentView]);
 
   const handleGoogleSignIn = () => {
     setErrorMessage(null);
@@ -171,6 +187,7 @@ export default function App() {
   };
 
   const handleStartRecording = () => {
+    setTab('record');
     setCurrentView('recording');
     setErrorMessage(null);
   };
@@ -179,29 +196,64 @@ export default function App() {
     if (!token) {
       return;
     }
-
     setIsRecordingProcessing(true);
     setErrorMessage(null);
-
     try {
       const recording = await createRecording(token, payload.durationSeconds);
       const dataUrl = await blobToDataUrl(payload.audioBlob);
-
       await uploadRecordingMedia(token, recording.id, {
         audioUrl: dataUrl,
         transcriptText: '',
       });
 
+      let transcriptText = '';
+      try {
+        const transcribed = await transcribeRecording(token, recording.id);
+        transcriptText = String(transcribed.transcriptText || '').trim();
+      } catch {
+        transcriptText = '';
+      }
+
+      if (!transcriptText) {
+        transcriptText = 'Transcription was not generated automatically. You can type or paste notes here.';
+      }
+
       setDraftRecording({
         id: recording.id,
         durationSeconds: payload.durationSeconds,
+        transcriptText,
       });
-      setCurrentView('createPersona');
+      setCurrentView('reviewRecording');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not save recording');
       setCurrentView('list');
+      setTab('contacts');
     } finally {
       setIsRecordingProcessing(false);
+    }
+  };
+
+  const handleLinkRecordingToContact = async (contactId: string) => {
+    if (!token || !draftRecording) {
+      return;
+    }
+    setIsLinkingRecording(true);
+    setErrorMessage(null);
+    try {
+      const result = await linkRecordingToContact(token, draftRecording.id, {
+        contactId,
+        transcriptText: draftRecording.transcriptText,
+        appendToNotes: true,
+      });
+      setContacts((prev) => prev.map((contact) => (contact.id === result.contact.id ? result.contact : contact)));
+      setSelectedContact(result.contact);
+      setCurrentView('persona');
+      setDraftRecording(null);
+      setTab('contacts');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not link recording to contact');
+    } finally {
+      setIsLinkingRecording(false);
     }
   };
 
@@ -219,36 +271,23 @@ export default function App() {
     if (!token || !draftRecording) {
       return;
     }
-
     setIsCreatingPersona(true);
     setErrorMessage(null);
-
     try {
       const contact = await createContact(token, {
         ...payload,
         recordingId: draftRecording.id,
       });
-
       setContacts((prev) => [contact, ...prev]);
       setSelectedContact(contact);
       setCurrentView('persona');
       setDraftRecording(null);
+      setTab('contacts');
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to create persona');
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to create contact');
     } finally {
       setIsCreatingPersona(false);
     }
-  };
-
-  const handleViewContact = (contact: Contact) => {
-    setSelectedContact(contact);
-    setCurrentView('persona');
-  };
-
-  const handleBackToList = () => {
-    setCurrentView('list');
-    setSelectedContact(null);
-    setDraftRecording(null);
   };
 
   const handleSignOut = async () => {
@@ -256,17 +295,12 @@ export default function App() {
       setStoredToken(null);
       setToken(null);
       setUser(null);
-      setContacts([]);
-      setCurrentView('list');
-      setSelectedContact(null);
       return;
     }
-
     try {
       await signOut(token);
-    } catch {
-      setStoredToken(null);
     } finally {
+      setStoredToken(null);
       setToken(null);
       setUser(null);
       setContacts([]);
@@ -281,13 +315,11 @@ export default function App() {
     if (!token) {
       return;
     }
-
     const optimistic = contacts.map((c) => (c.id === contactId ? { ...c, notes } : c));
     setContacts(optimistic);
     if (selectedContact?.id === contactId) {
       setSelectedContact({ ...selectedContact, notes });
     }
-
     try {
       const updated = await updateContactNotes(token, contactId, notes);
       setContacts((prev) => prev.map((contact) => (contact.id === updated.id ? updated : contact)));
@@ -324,11 +356,19 @@ export default function App() {
   }
 
   if (currentView === 'recording') {
+    return <RecordingView onStop={handleStopRecording} onBack={() => { setTab('contacts'); setCurrentView('list'); }} isProcessing={isRecordingProcessing} />;
+  }
+
+  if (currentView === 'reviewRecording' && draftRecording) {
     return (
-      <RecordingView
-        onStop={handleStopRecording}
-        onBack={handleBackToList}
-        isProcessing={isRecordingProcessing}
+      <RecordingReviewView
+        transcriptText={draftRecording.transcriptText}
+        contacts={contacts}
+        isLinking={isLinkingRecording}
+        onBack={() => { setTab('contacts'); setCurrentView('list'); setDraftRecording(null); }}
+        onTranscriptChange={(transcriptText) => setDraftRecording((prev) => (prev ? { ...prev, transcriptText } : prev))}
+        onLinkToContact={handleLinkRecordingToContact}
+        onCreateNew={() => setCurrentView('createPersona')}
       />
     );
   }
@@ -337,8 +377,9 @@ export default function App() {
     return (
       <PersonaCreatorView
         durationSeconds={draftRecording.durationSeconds}
+        initialNotes={draftRecording.transcriptText}
         isSaving={isCreatingPersona}
-        onBack={handleBackToList}
+        onBack={() => setCurrentView('reviewRecording')}
         onSave={handleCreatePersona}
       />
     );
@@ -348,55 +389,96 @@ export default function App() {
     return (
       <PersonaCard
         contact={selectedContact}
-        onBack={handleBackToList}
+        onBack={() => setCurrentView('list')}
         onUpdateNotes={handleUpdateNotes}
       />
     );
   }
 
+  const NavButton = ({ id, label, icon }: { id: MainTab; label: string; icon: React.ReactNode }) => (
+    <button
+      onClick={() => {
+        setTab(id);
+        setCurrentView(id === 'record' ? 'recording' : 'list');
+      }}
+      className={`vx-nav-btn ${tab === id ? 'is-active' : ''}`}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+
   return (
-    <div className="min-h-screen bg-slate-950">
-      <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-10">
-        <div className="max-w-lg mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-white">Vertex</h1>
-            <button
-              onClick={handleSignOut}
-              className="text-slate-300 text-sm px-3 py-1.5 border border-slate-700 rounded-lg hover:bg-slate-800"
-            >
-              Log out
-            </button>
+    <div className="vx-app vx-shell">
+      <aside className="vx-sidebar">
+        <div className="vx-brand">Vertex</div>
+        <NavButton id="contacts" label="Contacts" icon={<Home size={16} />} />
+        <NavButton id="record" label="Record" icon={<Mic size={16} />} />
+        <NavButton id="settings" label="Settings" icon={<Settings size={16} />} />
+      </aside>
+
+      <div className="vx-main">
+        <header className="vx-topbar">
+          <div className="vx-topbar-inner">
+            <div className="vx-row" style={{ justifyContent: 'space-between' }}>
+              <div>
+                <div className="vx-h3">Vertex</div>
+                {headerSubtitle && <div className="vx-caption">{headerSubtitle}</div>}
+              </div>
+              <button className="vx-btn vx-btn-ghost" onClick={handleSignOut}>
+                <span className="vx-row"><LogOut size={14} /> Log out</span>
+              </button>
+            </div>
+            {tab === 'contacts' && (
+              <div style={{ marginTop: 12, position: 'relative' }}>
+                <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: 12, top: 12 }} />
+                <input
+                  type="text"
+                  placeholder="Search contacts"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="vx-input"
+                  style={{ paddingLeft: 36 }}
+                />
+              </div>
+            )}
           </div>
-          {headerSubtitle && <p className="text-slate-400 text-sm mt-1">{headerSubtitle}</p>}
-          <div className="relative mt-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Search contacts..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent text-white placeholder-slate-400"
+        </header>
+
+        <main className="vx-content">
+          {errorMessage && <div className="vx-alert" style={{ marginBottom: 12 }}>{errorMessage}</div>}
+
+          {tab === 'contacts' && (
+            <ContactList
+              contacts={contacts}
+              onViewContact={(contact) => { setSelectedContact(contact); setCurrentView('persona'); }}
+              searchQuery={searchQuery}
+              isLoading={isContactsLoading}
             />
-          </div>
-        </div>
-      </header>
+          )}
 
-      <main className="max-w-lg mx-auto px-4 py-6 pb-24">
-        {errorMessage && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-3 py-2 text-sm">
-            {errorMessage}
-          </div>
-        )}
-        <ContactList contacts={contacts} onViewContact={handleViewContact} searchQuery={searchQuery} />
-      </main>
+          {tab === 'settings' && (
+            <section className="vx-section vx-col" style={{ maxWidth: 620 }}>
+              <h2 className="vx-h3">Settings</h2>
+              <div className="vx-caption">Signed in as {user.name}</div>
+              <div className="vx-row" style={{ justifyContent: 'space-between', marginTop: 8 }}>
+                <div>
+                  <div className="vx-body" style={{ fontWeight: 600 }}>Google sign-in</div>
+                  <div className="vx-caption">{authProviders.google ? 'Enabled' : 'Not configured'}</div>
+                </div>
+                <span className="vx-badge">{authProviders.google ? 'On' : 'Off'}</span>
+              </div>
+              <button className="vx-btn" style={{ width: 'fit-content' }} onClick={handleSignOut}>Sign out</button>
+            </section>
+          )}
+        </main>
+      </div>
 
-      <button
-        onClick={handleStartRecording}
-        className="fixed bottom-6 right-6 bg-gradient-to-br from-blue-400 to-purple-400 text-white rounded-full p-4 shadow-lg hover:shadow-xl hover:from-blue-500 hover:to-purple-500 transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-slate-950"
-        aria-label="Start new recording"
-      >
-        <Plus className="w-6 h-6" />
-      </button>
+      <nav className="vx-bottom-nav" aria-label="Main navigation">
+        <NavButton id="contacts" label="Contacts" icon={<Home size={18} />} />
+        <NavButton id="record" label="Record" icon={<Mic size={18} />} />
+        <NavButton id="settings" label="Settings" icon={<Settings size={18} />} />
+      </nav>
     </div>
   );
 }

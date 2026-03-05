@@ -5,77 +5,87 @@ interface ContactListProps {
   contacts: Contact[];
   onViewContact: (contact: Contact) => void;
   searchQuery: string;
+  isLoading?: boolean;
 }
 
-export function ContactList({ contacts, onViewContact, searchQuery }: ContactListProps) {
+export function ContactList({ contacts, onViewContact, searchQuery, isLoading = false }: ContactListProps) {
+  if (isLoading) {
+    return (
+      <div className="vx-col">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div key={index} className="vx-card" style={{ padding: 12 }}>
+            <div className="vx-row">
+              <div className="vx-skeleton" style={{ width: 44, height: 44, borderRadius: 999 }} />
+              <div style={{ flex: 1 }}>
+                <div className="vx-skeleton" style={{ height: 12, width: '42%', marginBottom: 8 }} />
+                <div className="vx-skeleton" style={{ height: 10, width: '62%', marginBottom: 8 }} />
+                <div className="vx-skeleton" style={{ height: 10, width: '35%' }} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   if (contacts.length === 0 && searchQuery) {
     return (
-      <div className="text-center py-12">
-        <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Users className="w-8 h-8 text-slate-500" />
+      <div className="vx-section" style={{ textAlign: 'center', padding: 28 }}>
+        <div style={{ width: 52, height: 52, borderRadius: 999, margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-2)' }}>
+          <Users size={24} color="var(--text-muted)" />
         </div>
-        <h3 className="text-white font-semibold mb-2">No contacts found</h3>
-        <p className="text-slate-400">Try searching with different keywords</p>
+        <h3 className="vx-h3">No contacts found</h3>
+        <p className="vx-caption" style={{ marginTop: 4 }}>Try a different name, title, or company.</p>
       </div>
     );
   }
 
   if (contacts.length === 0) {
     return (
-      <div className="text-center py-12">
-        <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Users className="w-8 h-8 text-slate-500" />
+      <div className="vx-section" style={{ textAlign: 'center', padding: 28 }}>
+        <div style={{ width: 52, height: 52, borderRadius: 999, margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-2)' }}>
+          <Users size={24} color="var(--text-muted)" />
         </div>
-        <h3 className="text-white font-semibold mb-2">No contacts yet</h3>
-        <p className="text-slate-400 mb-6">Start recording your first conversation to create a persona card</p>
+        <h3 className="vx-h3">No contacts yet</h3>
+        <p className="vx-caption" style={{ marginTop: 4 }}>Record your first conversation to create one.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
-      <h2 className="text-slate-400 text-sm font-semibold uppercase tracking-wide px-1">
+    <div className="vx-col">
+      <h2 className="vx-caption" style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', paddingInline: 2 }}>
         {searchQuery ? `${contacts.length} Result${contacts.length !== 1 ? 's' : ''}` : `${contacts.length} Contact${contacts.length !== 1 ? 's' : ''}`}
       </h2>
-      
-      <div className="space-y-2">
+      <div className="vx-col">
         {contacts.map((contact) => (
           <button
             key={contact.id}
             onClick={() => onViewContact(contact)}
-            className="w-full bg-slate-900 rounded-lg p-4 border border-slate-800 hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10 transition-all text-left group"
+            className="vx-contact-row"
           >
-            <div className="flex items-start gap-4">
+            <div className="vx-contact-main">
               <img
                 src={contact.profileImage}
                 alt={contact.name}
-                className="w-14 h-14 rounded-full object-cover flex-shrink-0 border-2 border-slate-800 group-hover:border-blue-500/30"
+                className="vx-avatar"
               />
-              
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2 mb-1">
-                  <h3 className="text-white font-semibold truncate">{contact.name}</h3>
-                  <ChevronRight className="w-5 h-5 text-slate-600 group-hover:text-blue-400 transition-colors flex-shrink-0" />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <h3 className="vx-body" style={{ fontWeight: 650, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{contact.name}</h3>
                 </div>
-                
-                <div className="flex items-center gap-2 text-slate-300 text-sm mb-2">
-                  <Briefcase className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span className="truncate">{contact.title} at {contact.company}</span>
+                <div className="vx-caption" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <Briefcase size={13} />
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{contact.title} at {contact.company}</span>
                 </div>
-                
-                <p className="text-slate-400 text-sm line-clamp-2">
-                  {contact.notes}
-                </p>
-                
-                <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
+                <div className="vx-caption" style={{ marginTop: 6, display: 'flex', gap: 8 }}>
                   <span>{new Date(contact.dateAdded).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                   <span>•</span>
                   <span>{contact.conversationDuration}</span>
-                  <span>•</span>
-                  <span>{contact.keyFacts.length + contact.funFacts.length} insights</span>
                 </div>
               </div>
             </div>
+            <ChevronRight size={18} color="var(--text-muted)" />
           </button>
         ))}
       </div>

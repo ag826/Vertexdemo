@@ -205,6 +205,29 @@ export async function getRecording(token: string, recordingId: string) {
   }, token);
 }
 
+export async function autoBuildRecording(token: string, recordingId: string) {
+  return request<{ recording: Recording; contact: Contact }>(`/recordings/${recordingId}/autobuild`, {
+    method: 'POST',
+  }, token);
+}
+
+export async function transcribeRecording(token: string, recordingId: string) {
+  return request<{ recording: Recording; transcriptText: string }>(`/recordings/${recordingId}/transcribe`, {
+    method: 'POST',
+  }, token);
+}
+
+export async function linkRecordingToContact(
+  token: string,
+  recordingId: string,
+  payload: { contactId: string; transcriptText?: string; appendToNotes?: boolean },
+) {
+  return request<{ recording: Recording; contact: Contact }>(`/recordings/${recordingId}/link-contact`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, token);
+}
+
 export interface IntegrationRecord {
   id: string;
   provider: 'slack' | 'discord' | 'telegram';
