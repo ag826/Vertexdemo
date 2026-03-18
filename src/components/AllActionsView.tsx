@@ -1,15 +1,38 @@
 import { useState } from 'react';
-import { Mail, Calendar, Phone, UserPlus, Share2, Clock, ChevronRight, Zap } from 'lucide-react';
-import type { SuggestedAction } from '../App';
+import { Zap, Mail, Calendar, Phone, UserPlus, Share2, Clock, ChevronRight } from 'lucide-react';
+import type { Contact, SuggestedAction } from '../App';
 import { ActionModal } from './ActionModal';
 
-interface SuggestedActionsProps {
-  actions: SuggestedAction[];
-  contactName: string;
+interface AllActionsViewProps {
+  contacts: Contact[];
 }
 
-export function SuggestedActions({ actions, contactName }: SuggestedActionsProps) {
-  const [selectedAction, setSelectedAction] = useState<SuggestedAction | null>(null);
+interface ActionWithContact extends SuggestedAction {
+  contactName: string;
+  contactImage: string;
+  contactTitle: string;
+  contactCompany: string;
+}
+
+export function AllActionsView({ contacts }: AllActionsViewProps) {
+  const [selectedAction, setSelectedAction] = useState<ActionWithContact | null>(null);
+
+  // Flatten all actions from all contacts
+  const allActions: ActionWithContact[] = contacts.flatMap(contact =>
+    contact.suggestedActions.map(action => ({
+      ...action,
+      contactName: contact.name,
+      contactImage: contact.profileImage,
+      contactTitle: contact.title,
+      contactCompany: contact.company
+    }))
+  );
+
+  // Sort by priority (high -> medium -> low)
+  const priorityOrder = { high: 1, medium: 2, low: 3 };
+  const sortedActions = allActions.sort((a, b) => 
+    priorityOrder[a.priority] - priorityOrder[b.priority]
+  );
 
   const getActionIcon = (type: SuggestedAction['type']) => {
     switch (type) {
@@ -67,30 +90,55 @@ export function SuggestedActions({ actions, contactName }: SuggestedActionsProps
     }
   };
 
-  if (actions.length === 0) {
-    return null;
+  if (sortedActions.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Zap className="w-8 h-8 text-slate-500" />
+        </div>
+        <h3 className="text-white font-semibold mb-2">No actions yet</h3>
+        <p className="text-slate-400">Actions from your conversations will appear here</p>
+      </div>
+    );
   }
 
   return (
     <>
-      <section className="bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-xl p-6 border border-green-500/20 shadow-sm backdrop-blur-sm">
-        <div className="flex items-center gap-2.5 mb-5">
-          <div className="w-10 h-10 bg-green-500/30 rounded-full flex items-center justify-center shadow-sm">
-            <Zap className="w-5 h-5 text-green-400" />
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1 mb-4">
+          <div>
+            <h2 className="text-white font-semibold text-lg">Action Items</h2>
+            <p className="text-slate-400 text-sm">{sortedActions.length} pending {sortedActions.length === 1 ? 'action' : 'actions'}</p>
           </div>
-          <div className="flex-1">
-            <h2 className="text-white font-semibold text-lg">Suggested Actions</h2>
-            <p className="text-slate-400 text-xs">Based on your conversations</p>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/20 text-green-300 rounded-full text-xs border border-green-500/30">
+              <Zap className="w-3 h-3" />
+              <span>Sorted by priority</span>
+            </div>
           </div>
         </div>
 
-        <div className="space-y-3">
-          {actions.map((action) => (
+        <div className="space-y-2">
+          {sortedActions.map((action) => (
             <button
-              key={action.id}
+              key={`${action.contactName}-${action.id}`}
               onClick={() => setSelectedAction(action)}
-              className="w-full bg-slate-900/50 rounded-lg p-4 border border-slate-800 hover:border-green-500/50 hover:shadow-lg hover:shadow-green-500/10 transition-all text-left group"
+              className="w-full bg-slate-900 rounded-lg p-4 border border-slate-800 hover:border-green-500/50 hover:shadow-lg hover:shadow-green-500/10 transition-all text-left group"
             >
+              {/* Contact Info Header */}
+              <div className="flex items-center gap-3 mb-3 pb-3 border-b border-slate-800">
+                <img
+                  src={action.contactImage}
+                  alt={action.contactName}
+                  className="w-10 h-10 rounded-full object-cover border-2 border-slate-800"
+                />
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-white font-medium text-sm">{action.contactName}</h3>
+                  <p className="text-slate-400 text-xs truncate">{action.contactTitle} at {action.contactCompany}</p>
+                </div>
+              </div>
+
+              {/* Action Details */}
               <div className="flex items-start gap-3">
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${getActionColor(action.type)} flex-shrink-0`}>
                   {getActionIcon(action.type)}
@@ -98,7 +146,7 @@ export function SuggestedActions({ actions, contactName }: SuggestedActionsProps
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2 mb-1">
-                    <h3 className="text-white font-medium leading-snug">{action.title}</h3>
+                    <h4 className="text-white font-medium leading-snug">{action.title}</h4>
                     <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-green-400 transition-colors flex-shrink-0 mt-1" />
                   </div>
                   
@@ -118,26 +166,21 @@ export function SuggestedActions({ actions, contactName }: SuggestedActionsProps
                         <span>{action.dueDate}</span>
                       </div>
                     )}
-
-                    <div className="flex items-center gap-1 px-2.5 py-1 bg-green-500/20 text-green-300 rounded-full text-xs border border-green-500/30">
-                      <Zap className="w-3 h-3" />
-                      <span>View context</span>
-                    </div>
                   </div>
                 </div>
               </div>
             </button>
           ))}
         </div>
-      </section>
+      </div>
 
-      {/* Transcript Modal */}
+      {/* Action Modal */}
       {selectedAction && (
         <ActionModal
           isOpen={true}
           onClose={() => setSelectedAction(null)}
           action={selectedAction}
-          contactName={contactName}
+          contactName={selectedAction.contactName}
         />
       )}
     </>
