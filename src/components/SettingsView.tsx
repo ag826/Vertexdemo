@@ -1,4 +1,5 @@
-import { Check, X, Settings as SettingsIcon, Mail, Calendar, Video, MessageSquare, Linkedin, Hash, ChevronRight, Shield, AlertCircle } from 'lucide-react';
+import { Check, X, Settings as SettingsIcon, Mail, Calendar, Video, MessageSquare, Linkedin, Hash, ChevronRight, Shield, AlertCircle, Moon, Sun } from 'lucide-react';
+import { useTheme } from './ThemeContext';
 
 interface Platform {
   id: string;
@@ -11,6 +12,7 @@ interface Platform {
 }
 
 export function SettingsView() {
+  const { theme, toggleTheme } = useTheme();
   const platforms: Platform[] = [
     {
       id: 'email',
@@ -69,11 +71,11 @@ export function SettingsView() {
   const getStatusColor = (status: Platform['status']) => {
     switch (status) {
       case 'connected':
-        return 'bg-green-500/20 text-green-300 border-green-500/30';
+        return 'bg-green-50 text-green-700 border-green-200';
       case 'disconnected':
-        return 'bg-slate-700/50 text-slate-400 border-slate-600';
+        return 'bg-slate-100 text-slate-600 border-slate-200';
       case 'pending':
-        return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30';
+        return 'bg-yellow-50 text-yellow-700 border-yellow-200';
     }
   };
 
@@ -99,6 +101,17 @@ export function SettingsView() {
     }
   };
 
+  const getStatusDot = (status: Platform['status']) => {
+    switch (status) {
+      case 'connected':
+        return 'bg-green-500';
+      case 'disconnected':
+        return 'bg-slate-500';
+      case 'pending':
+        return 'bg-yellow-500';
+    }
+  };
+
   const handlePlatformClick = (platform: Platform) => {
     if (platform.status === 'connected') {
       alert(`${platform.name} settings: Manage permissions, disconnect, or view sync history`);
@@ -108,15 +121,41 @@ export function SettingsView() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-xl p-5 border border-blue-500/20">
+    <div className="space-y-6 pb-8">
+      {/* Theme Toggle */}
+      <div className="bg-white dark:bg-slate-800/50 rounded-xl p-5 border border-slate-200 dark:border-slate-700">
+        <h3 className="text-slate-900 dark:text-slate-100 font-semibold mb-3">Appearance</h3>
+        <button 
+          onClick={toggleTheme}
+          className="w-full text-left px-4 py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center justify-between group"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-cyan-500 rounded-lg flex items-center justify-center">
+              {theme === 'light' ? (
+                <Sun className="w-5 h-5 text-white" />
+              ) : (
+                <Moon className="w-5 h-5 text-white" />
+              )}
+            </div>
+            <div>
+              <div className="text-slate-900 dark:text-slate-100 font-medium">Theme</div>
+              <div className="text-slate-600 dark:text-slate-400 text-sm">{theme === 'light' ? 'Light Mode' : 'Dark Mode'}</div>
+            </div>
+          </div>
+          <div className="px-3 py-1.5 bg-slate-200 dark:bg-slate-600 rounded-lg text-slate-700 dark:text-slate-300 text-sm font-medium">
+            {theme === 'light' ? 'Switch to Dark' : 'Switch to Light'}
+          </div>
+        </button>
+      </div>
+
+      <div className="bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-900/20 dark:to-cyan-900/20 rounded-xl p-5 border border-teal-200 dark:border-teal-700/50">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Shield className="w-5 h-5 text-blue-400" />
+          <div className="w-10 h-10 bg-teal-100 dark:bg-teal-800/50 rounded-lg flex items-center justify-center flex-shrink-0">
+            <Shield className="w-5 h-5 text-teal-600 dark:text-teal-400" />
           </div>
           <div>
-            <h3 className="text-white font-semibold mb-1">Your Data is Protected</h3>
-            <p className="text-slate-300 text-sm leading-relaxed">
+            <h3 className="text-slate-900 dark:text-slate-100 font-semibold mb-1">Your Data is Protected</h3>
+            <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed">
               Vertex uses end-to-end encryption and only accesses data with your explicit permission. You can revoke access at any time.
             </p>
           </div>
@@ -124,61 +163,59 @@ export function SettingsView() {
       </div>
 
       <div>
-        <h2 className="text-white font-semibold text-lg mb-1 px-1">Platform Integrations</h2>
-        <p className="text-slate-400 text-sm mb-4 px-1">Manage connected platforms and permissions</p>
+        <h2 className="text-slate-900 dark:text-slate-100 font-semibold text-lg mb-1 px-1">Platform Integrations</h2>
+        <p className="text-slate-600 dark:text-slate-400 text-sm mb-4 px-1">Manage connected platforms and permissions</p>
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           {platforms.map((platform) => (
             <button
               key={platform.id}
               onClick={() => handlePlatformClick(platform)}
-              className="w-full bg-slate-900 rounded-lg p-4 border border-slate-800 hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10 transition-all text-left group"
+              className="w-full bg-white dark:bg-slate-800/50 rounded-lg p-4 border border-slate-200 dark:border-slate-700 hover:border-teal-300 dark:hover:border-teal-600 hover:shadow-md transition-all text-left group"
             >
               <div className="flex items-start gap-3">
-                <div className="w-12 h-12 bg-slate-800 rounded-lg flex items-center justify-center text-slate-300 flex-shrink-0 group-hover:bg-slate-700 transition-colors">
+                <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700/50 rounded-lg flex items-center justify-center text-slate-700 dark:text-slate-300 flex-shrink-0 group-hover:bg-slate-200 dark:group-hover:bg-slate-700 transition-colors">
                   {platform.icon}
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2 mb-1">
-                    <h3 className="text-white font-semibold">{platform.name}</h3>
-                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-blue-400 transition-colors flex-shrink-0 mt-1" />
+                    <h3 className="text-slate-900 dark:text-slate-100 font-semibold">{platform.name}</h3>
+                    <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-500 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors flex-shrink-0 mt-1" />
                   </div>
-
-                  <p className="text-slate-400 text-sm mb-3 leading-relaxed">
+                  
+                  <p className="text-slate-600 dark:text-slate-400 text-sm mb-3">
                     {platform.description}
                   </p>
 
-                  <div className="flex items-center gap-2 flex-wrap mb-3">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border ${getStatusColor(platform.status)}`}>
-                      {getStatusIcon(platform.status)}
-                      <span>{getStatusText(platform.status)}</span>
+                      <div className={`w-1.5 h-1.5 rounded-full ${getStatusDot(platform.status)}`}></div>
+                      <span className="capitalize">{platform.status}</span>
                     </div>
 
                     {platform.lastSync && (
-                      <div className="flex items-center gap-1 px-2.5 py-1 bg-slate-800/50 text-slate-400 rounded-full text-xs">
-                        <div className="w-1.5 h-1.5 bg-slate-500 rounded-full"></div>
+                      <div className="flex items-center gap-1 px-2.5 py-1 bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 rounded-full text-xs">
+                        <div className="w-1.5 h-1.5 bg-slate-400 dark:bg-slate-500 rounded-full"></div>
                         <span>Synced {platform.lastSync}</span>
                       </div>
                     )}
                   </div>
 
                   {platform.status === 'connected' && (
-                    <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+                    <div className="bg-slate-50 dark:bg-slate-700/30 rounded-lg p-3 border border-slate-200 dark:border-slate-600 mt-3">
                       <div className="flex items-center gap-2 mb-2">
-                        <Shield className="w-3.5 h-3.5 text-slate-400" />
-                        <p className="text-slate-400 text-xs font-medium">Permissions</p>
+                        <Shield className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
+                        <span className="text-xs text-slate-700 dark:text-slate-300 font-medium">Active Permissions:</span>
                       </div>
-                      <div className="flex flex-wrap gap-1.5">
+                      <ul className="space-y-1">
                         {platform.permissions.map((permission, index) => (
-                          <span
-                            key={index}
-                            className="inline-block px-2 py-0.5 bg-slate-700/50 text-slate-300 rounded text-xs"
-                          >
-                            {permission}
-                          </span>
+                          <li key={index} className="text-xs text-slate-600 dark:text-slate-400 flex items-start gap-1.5">
+                            <Check className="w-3 h-3 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                            <span>{permission}</span>
+                          </li>
                         ))}
-                      </div>
+                      </ul>
                     </div>
                   )}
                 </div>
@@ -188,25 +225,25 @@ export function SettingsView() {
         </div>
       </div>
 
-      <div className="bg-slate-900 rounded-xl p-5 border border-slate-800">
-        <h3 className="text-white font-semibold mb-3">Additional Settings</h3>
+      <div className="bg-white dark:bg-slate-800/50 rounded-xl p-5 border border-slate-200 dark:border-slate-700">
+        <h3 className="text-slate-900 dark:text-slate-100 font-semibold mb-3">Additional Settings</h3>
         <div className="space-y-2">
-          <button className="w-full text-left px-4 py-3 bg-slate-800/50 hover:bg-slate-800 rounded-lg transition-colors">
+          <button className="w-full text-left px-4 py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
             <div className="flex items-center justify-between">
-              <span className="text-slate-300">Notification Preferences</span>
-              <ChevronRight className="w-4 h-4 text-slate-500" />
+              <span className="text-slate-700 dark:text-slate-300">Notification Preferences</span>
+              <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-500" />
             </div>
           </button>
-          <button className="w-full text-left px-4 py-3 bg-slate-800/50 hover:bg-slate-800 rounded-lg transition-colors">
+          <button className="w-full text-left px-4 py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
             <div className="flex items-center justify-between">
-              <span className="text-slate-300">Privacy & Data</span>
-              <ChevronRight className="w-4 h-4 text-slate-500" />
+              <span className="text-slate-700 dark:text-slate-300">Privacy & Data</span>
+              <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-500" />
             </div>
           </button>
-          <button className="w-full text-left px-4 py-3 bg-slate-800/50 hover:bg-slate-800 rounded-lg transition-colors">
+          <button className="w-full text-left px-4 py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
             <div className="flex items-center justify-between">
-              <span className="text-slate-300">Export Data</span>
-              <ChevronRight className="w-4 h-4 text-slate-500" />
+              <span className="text-slate-700 dark:text-slate-300">Export Data</span>
+              <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-500" />
             </div>
           </button>
         </div>

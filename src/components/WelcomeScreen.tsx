@@ -1,4 +1,5 @@
 import { Users, Mic, Brain } from 'lucide-react';
+import vertexLogo from 'figma:asset/62edb3c51125a4b122ed2c06dafbbf9a9e7bec60.png';
 
 interface WelcomeScreenProps {
   onSignIn: () => void;
@@ -6,13 +7,13 @@ interface WelcomeScreenProps {
 
 export function WelcomeScreen({ onSignIn }: WelcomeScreenProps) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
       {/* Header */}
       <header className="p-4 flex justify-between items-center max-w-lg mx-auto w-full">
-        <div className="text-blue-400 font-semibold text-xl">Vertex</div>
+        <img src={vertexLogo} alt="Vertex" className="h-8" />
         <button
           onClick={onSignIn}
-          className="text-slate-300 hover:text-white transition-colors px-4 py-2"
+          className="text-slate-700 hover:text-slate-900 transition-colors px-4 py-2 font-medium"
         >
           Sign in
         </button>
@@ -21,44 +22,44 @@ export function WelcomeScreen({ onSignIn }: WelcomeScreenProps) {
       {/* Main Content */}
       <main className="flex-1 flex flex-col items-center justify-center px-6 max-w-lg mx-auto w-full">
         <div className="text-center mb-12">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-400 to-purple-400 rounded-full mb-6">
-            <Users className="w-10 h-10 text-white" />
+          <div className="inline-flex items-center justify-center mb-8">
+            <img src={vertexLogo} alt="Vertex" className="w-64 h-auto" />
           </div>
-          <h1 className="text-white mb-4">Capture conversations.<br />Build networking personas.</h1>
-          <p className="text-slate-300 text-lg leading-relaxed">
+          <h1 className="text-slate-900 mb-4">Capture conversations.<br />Build networking personas.</h1>
+          <p className="text-slate-600 text-lg leading-relaxed">
             Never forget a networking conversation again. Vertex automatically captures details and creates memorable persona cards for every contact.
           </p>
         </div>
 
         {/* Features */}
         <div className="w-full space-y-4 mb-12">
-          <div className="flex items-start gap-4 bg-slate-900/50 backdrop-blur-sm p-4 rounded-lg border border-slate-800">
-            <div className="flex-shrink-0 w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
-              <Mic className="w-5 h-5 text-blue-400" />
+          <div className="flex items-start gap-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg border border-slate-200 shadow-sm">
+            <div className="flex-shrink-0 w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
+              <Mic className="w-5 h-5 text-teal-600" />
             </div>
             <div>
-              <h3 className="text-white font-semibold mb-1">Automatic Recording</h3>
-              <p className="text-slate-400 text-sm">Record conversations hands-free without disrupting the flow</p>
+              <h3 className="text-slate-900 font-semibold mb-1">Automatic Recording</h3>
+              <p className="text-slate-600 text-sm">Record conversations hands-free without disrupting the flow</p>
             </div>
           </div>
 
-          <div className="flex items-start gap-4 bg-slate-900/50 backdrop-blur-sm p-4 rounded-lg border border-slate-800">
-            <div className="flex-shrink-0 w-10 h-10 bg-purple-500/20 rounded-full flex items-center justify-center">
-              <Brain className="w-5 h-5 text-purple-400" />
+          <div className="flex items-start gap-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg border border-slate-200 shadow-sm">
+            <div className="flex-shrink-0 w-10 h-10 bg-cyan-100 rounded-full flex items-center justify-center">
+              <Brain className="w-5 h-5 text-cyan-600" />
             </div>
             <div>
-              <h3 className="text-white font-semibold mb-1">Smart Personas</h3>
-              <p className="text-slate-400 text-sm">AI-generated persona cards with key facts and fun details</p>
+              <h3 className="text-slate-900 font-semibold mb-1">Smart Personas</h3>
+              <p className="text-slate-600 text-sm">AI-generated persona cards with key facts and fun details</p>
             </div>
           </div>
 
-          <div className="flex items-start gap-4 bg-slate-900/50 backdrop-blur-sm p-4 rounded-lg border border-slate-800">
-            <div className="flex-shrink-0 w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
-              <Users className="w-5 h-5 text-green-400" />
+          <div className="flex items-start gap-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg border border-slate-200 shadow-sm">
+            <div className="flex-shrink-0 w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
+              <Users className="w-5 h-5 text-emerald-600" />
             </div>
             <div>
-              <h3 className="text-white font-semibold mb-1">LinkedIn Integration</h3>
-              <p className="text-slate-400 text-sm">Automatically pull professional details from LinkedIn profiles</p>
+              <h3 className="text-slate-900 font-semibold mb-1">LinkedIn Integration</h3>
+              <p className="text-slate-600 text-sm">Automatically pull professional details from LinkedIn profiles</p>
             </div>
           </div>
         </div>
@@ -67,13 +68,13 @@ export function WelcomeScreen({ onSignIn }: WelcomeScreenProps) {
         <div className="w-full space-y-3">
           <button
             onClick={onSignIn}
-            className="w-full bg-gradient-to-r from-blue-400 to-purple-400 text-white py-3.5 rounded-lg hover:from-blue-500 hover:to-purple-500 transition-all font-semibold shadow-lg"
+            className="w-full bg-gradient-to-r from-teal-500 to-cyan-600 text-white py-3.5 rounded-lg hover:from-teal-600 hover:to-cyan-700 transition-all font-semibold shadow-lg"
           >
             Sign up
           </button>
           <button
             onClick={onSignIn}
-            className="w-full bg-slate-800 text-slate-200 py-3.5 rounded-lg hover:bg-slate-700 transition-colors font-semibold border border-slate-700"
+            className="w-full bg-white text-slate-700 py-3.5 rounded-lg hover:bg-slate-50 transition-colors font-semibold border border-slate-300"
           >
             Sign in
           </button>

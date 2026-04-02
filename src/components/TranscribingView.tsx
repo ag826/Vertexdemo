@@ -256,18 +256,18 @@ export function TranscribingView({ onStop, onBack }: TranscribingViewProps) {
         {!isTranscribing ? (
           <div className="text-center">
             <div className="mb-8">
-              <div className="w-32 h-32 mx-auto mb-6 bg-gradient-to-br from-blue-400/20 to-purple-400/20 rounded-full flex items-center justify-center border-2 border-blue-400/30">
-                <Mic className="w-16 h-16 text-blue-400" />
+              <div className="w-32 h-32 mx-auto mb-6 bg-gradient-to-br from-teal-400/20 to-cyan-400/20 rounded-full flex items-center justify-center border-2 border-teal-400/30">
+                <Mic className="w-16 h-16 text-teal-400" />
               </div>
-              <h2 className="text-white mb-2">Ready to Transcribe</h2>
-              <p className="text-slate-400 max-w-sm mx-auto">
-                Tap the button below to start capturing your conversation. Vertex will automatically extract insights and create a detailed profile.
+              <h2 className="text-white mb-2">Ready to Record</h2>
+              <p className="text-slate-400">
+                Start transcribing your networking conversation
               </p>
             </div>
 
             <button
               onClick={handleStartTranscribing}
-              className="bg-gradient-to-r from-blue-400 to-purple-400 text-white px-8 py-4 rounded-full font-semibold text-lg hover:from-blue-500 hover:to-purple-500 transition-all hover:scale-105 shadow-lg"
+              className="bg-gradient-to-r from-teal-400 to-cyan-500 text-white px-8 py-4 rounded-full font-semibold text-lg hover:from-teal-500 hover:to-cyan-600 transition-all hover:scale-105 shadow-lg"
             >
               Start Transcribing
             </button>
@@ -275,8 +275,8 @@ export function TranscribingView({ onStop, onBack }: TranscribingViewProps) {
         ) : (
           <div className="text-center">
             <div className="mb-8">
-              <div className={`w-32 h-32 mx-auto mb-6 bg-gradient-to-br from-blue-400 to-purple-400 rounded-full flex items-center justify-center relative ${isPulsing ? 'animate-pulse' : ''}`}>
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-400 to-purple-400 rounded-full animate-ping opacity-20"></div>
+              <div className={`w-32 h-32 mx-auto mb-6 bg-gradient-to-br from-teal-400 to-cyan-400 rounded-full flex items-center justify-center relative ${isPulsing ? 'animate-pulse' : ''}`}>
+                <div className="absolute inset-0 bg-gradient-to-br from-teal-400 to-cyan-400 rounded-full animate-ping opacity-20"></div>
                 <Mic className="w-16 h-16 text-white relative z-10" />
               </div>
               <h2 className="text-white mb-2">Transcribing...</h2>

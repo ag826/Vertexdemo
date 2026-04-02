@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { Search, Plus, ChevronRight, Users as UsersIcon, Zap, Settings as SettingsIcon } from 'lucide-react';
+import { Search, Plus, ChevronRight, Users as UsersIcon, Zap, Settings as SettingsIcon, MessageCircle } from 'lucide-react';
 import { TranscribingView } from './components/TranscribingView';
 import { PersonaCard } from './components/PersonaCard';
 import { ContactList } from './components/ContactList';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { AllActionsView } from './components/AllActionsView';
 import { SettingsView } from './components/SettingsView';
+import { ChatAssistant } from './components/ChatAssistant';
+import { ThemeProvider } from './components/ThemeContext';
+import vertexLogo from 'figma:asset/62edb3c51125a4b122ed2c06dafbbf9a9e7bec60.png';
 
 export interface Contact {
   id: string;
@@ -55,7 +58,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'list' | 'recording' | 'persona' | 'actions' | 'settings'>('list');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'contacts' | 'actions' | 'settings'>('contacts');
+  const [activeTab, setActiveTab] = useState<'contacts' | 'actions' | 'chat' | 'settings'>('contacts');
 
   // Sample data
   const [contacts, setContacts] = useState<Contact[]>([
@@ -536,51 +539,35 @@ export default function App() {
       linkedInUrl: 'linkedin.com/in/priyasharma',
       profileImage: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400',
       dateAdded: '2026-01-30',
-      notes: 'Met at Design Systems Conference. Leading a team of 12 designers. Very interested in accessibility and inclusive design. Mentioned her studio just won 3 awards at the Design Excellence Awards. Offered to introduce me to her network in LA.',
+      notes: 'Met at Design Systems Conference. Leading a team of 12 designers. Very interested in accessibility and inclusive design. Mentioned her studio is working on a major rebrand for a Fortune 500 company.',
       keyFacts: [
-        { text: '15 years experience in product design', source: 'LinkedIn', category: 'Background' },
-        { text: 'Led rebrands for 2 Fortune 500 companies', source: 'LinkedIn', category: 'Professional' },
-        { text: 'Teaches design thinking at UCLA', source: 'Conversation', category: 'Professional' },
-        { text: 'Founding member of Women in Design group', source: 'LinkedIn', category: 'Professional' }
+        { text: 'Former lead designer at Airbnb', source: 'LinkedIn', category: 'Background' },
+        { text: 'Specializes in design systems and accessibility', source: 'LinkedIn', category: 'Professional' },
+        { text: 'Speaking at 3 design conferences this year', source: 'Conversation', category: 'Professional' },
+        { text: 'Published a book on inclusive design', source: 'LinkedIn', category: 'Professional' }
       ],
       funFacts: [
-        { text: 'Practices yoga every morning at 6am', source: 'Conversation', category: 'Personal' },
-        { text: 'Amateur photographer (landscapes)', source: 'Social Media', category: 'Interest' },
-        { text: 'Loves cooking Indian fusion cuisine', source: 'Conversation', category: 'Interest' },
-        { text: 'Has visited 40+ countries', source: 'Conversation', category: 'Background' }
+        { text: 'Practices Bharatanatyam (classical Indian dance)', source: 'Conversation', category: 'Interest' },
+        { text: 'Collects vintage cameras', source: 'Conversation', category: 'Interest' },
+        { text: 'Vegetarian cook (hosts monthly dinner parties)', source: 'Conversation', category: 'Personal' },
+        { text: 'Learning to speak Tamil', source: 'Conversation', category: 'Personal' }
       ],
       suggestedActions: [
         {
           id: '1',
-          type: 'introduction',
-          title: 'Get intro to LA design network',
-          description: 'Priya offered to introduce you to her network in Los Angeles',
+          type: 'email',
+          title: 'Share accessibility resources',
+          description: 'Priya asked for recommendations on accessibility tools',
           priority: 'medium',
-          dueDate: 'March 1, 2026',
+          dueDate: 'February 28, 2026',
           transcript: {
             platform: 'In-Person',
-            occasion: 'Design Systems Conference - Closing Mixer',
+            occasion: 'Design Systems Conference - Workshop',
             date: 'January 30, 2026',
-            time: '5:30 PM',
+            time: '3:00 PM',
             location: 'Los Angeles Convention Center',
-            fullTranscript: "You know, if you're ever looking to expand your network on the West Coast, I'd be happy to make some intros. I know a lot of great people in the LA design and tech scene. Just let me know what kind of connections would be helpful and I can facilitate.",
-            highlightedText: "I'd be happy to make some intros. I know a lot of great people in the LA design and tech scene."
-          }
-        },
-        {
-          id: '2',
-          type: 'call',
-          title: 'Schedule call about accessibility',
-          description: 'Discuss inclusive design strategies and best practices',
-          priority: 'low',
-          transcript: {
-            platform: 'In-Person',
-            occasion: 'Design Systems Conference - Panel Q&A',
-            date: 'January 30, 2026',
-            time: '3:15 PM',
-            location: 'Los Angeles Convention Center',
-            fullTranscript: "Accessibility is so close to my heart. It's not just about compliance - it's about making products that work for everyone. I love talking about this stuff. If you ever want to chat about inclusive design strategies, I'm always down for that conversation.",
-            highlightedText: "If you ever want to chat about inclusive design strategies, I'm always down for that conversation."
+            fullTranscript: "I'm always on the lookout for better accessibility tools and resources. If you come across anything interesting - whether it's testing tools, guidelines, or case studies - I'd love to see them. We're really trying to make accessibility a core part of our design process, not just a checkbox.",
+            highlightedText: "If you come across anything interesting - whether it's testing tools, guidelines, or case studies - I'd love to see them."
           }
         }
       ],
@@ -668,11 +655,46 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <ThemeProvider>
+      <AppContent 
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        filteredContacts={filteredContacts}
+        handleViewContact={handleViewContact}
+        contacts={contacts}
+        handleStartTranscribing={handleStartTranscribing}
+      />
+    </ThemeProvider>
+  );
+}
+
+function AppContent({ 
+  activeTab, 
+  setActiveTab, 
+  searchQuery, 
+  setSearchQuery,
+  filteredContacts,
+  handleViewContact,
+  contacts,
+  handleStartTranscribing 
+}: {
+  activeTab: 'contacts' | 'actions' | 'chat' | 'settings';
+  setActiveTab: (tab: 'contacts' | 'actions' | 'chat' | 'settings') => void;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  filteredContacts: Contact[];
+  handleViewContact: (contact: Contact) => void;
+  contacts: Contact[];
+  handleStartTranscribing: () => void;
+}) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
       {/* Header */}
-      <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-10">
+      <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10 shadow-sm">
         <div className="max-w-lg mx-auto px-4 py-4">
-          <h1 className="text-white mb-3">Vertex</h1>
+          <img src={vertexLogo} alt="Vertex" className="h-10 mb-3" />
           
           {/* Tabs */}
           <div className="flex gap-2 mb-3">
@@ -680,47 +702,58 @@ export default function App() {
               onClick={() => setActiveTab('contacts')}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg font-medium transition-all ${
                 activeTab === 'contacts'
-                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                  : 'bg-slate-800/50 text-slate-400 border border-slate-700 hover:bg-slate-800'
+                  ? 'bg-teal-50 text-teal-700 border border-teal-200 shadow-sm dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-700'
+                  : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700 dark:hover:bg-slate-800'
               }`}
             >
               <UsersIcon className="w-4 h-4" />
-              <span>Contacts</span>
+              <span className="hidden sm:inline">Contacts</span>
             </button>
             <button
               onClick={() => setActiveTab('actions')}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg font-medium transition-all ${
                 activeTab === 'actions'
-                  ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                  : 'bg-slate-800/50 text-slate-400 border border-slate-700 hover:bg-slate-800'
+                  ? 'bg-cyan-50 text-cyan-700 border border-cyan-200 shadow-sm dark:bg-cyan-900/30 dark:text-cyan-300 dark:border-cyan-700'
+                  : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700 dark:hover:bg-slate-800'
               }`}
             >
               <Zap className="w-4 h-4" />
-              <span>Actions</span>
+              <span className="hidden sm:inline">Actions</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg font-medium transition-all ${
+                activeTab === 'chat'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700'
+                  : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700 dark:hover:bg-slate-800'
+              }`}
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span className="hidden sm:inline">Chat</span>
             </button>
             <button
               onClick={() => setActiveTab('settings')}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg font-medium transition-all ${
                 activeTab === 'settings'
-                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                  : 'bg-slate-800/50 text-slate-400 border border-slate-700 hover:bg-slate-800'
+                  ? 'bg-sky-50 text-sky-700 border border-sky-200 shadow-sm dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-700'
+                  : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700 dark:hover:bg-slate-800'
               }`}
             >
               <SettingsIcon className="w-4 h-4" />
-              <span>Settings</span>
+              <span className="hidden sm:inline">Settings</span>
             </button>
           </div>
 
           {/* Search - Only show for contacts tab */}
           {activeTab === 'contacts' && (
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-5 h-5" />
               <input
                 type="text"
                 placeholder="Search contacts..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent text-white placeholder-slate-400"
+                className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-sm"
               />
             </div>
           )}
@@ -737,6 +770,8 @@ export default function App() {
           />
         ) : activeTab === 'actions' ? (
           <AllActionsView contacts={contacts} />
+        ) : activeTab === 'chat' ? (
+          <ChatAssistant contacts={contacts} onViewContact={handleViewContact} />
         ) : (
           <SettingsView />
         )}
@@ -745,7 +780,7 @@ export default function App() {
       {/* Floating Action Button */}
       <button
         onClick={handleStartTranscribing}
-        className="fixed bottom-6 right-6 bg-gradient-to-br from-blue-400 to-purple-400 text-white rounded-full p-4 shadow-lg hover:shadow-xl hover:from-blue-500 hover:to-purple-500 transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-slate-950"
+        className="fixed bottom-6 right-6 bg-gradient-to-br from-teal-500 to-cyan-600 text-white rounded-full p-4 shadow-lg hover:shadow-xl hover:from-teal-600 hover:to-cyan-700 transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900"
         aria-label="Start new transcription"
       >
         <Plus className="w-6 h-6" />
