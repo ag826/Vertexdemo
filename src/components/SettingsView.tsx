@@ -1,74 +1,86 @@
-import { Check, X, Settings as SettingsIcon, Mail, Calendar, Video, MessageSquare, Linkedin, Hash, ChevronRight, Shield, AlertCircle, Moon, Sun } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Check, X, Mail, Calendar, Video, MessageSquare, Linkedin, Hash, ChevronRight, Shield, AlertCircle, Moon, Sun, Download, Sparkles } from 'lucide-react';
+import { connectIntegration, disconnectIntegration, exportData, getIntegrations, getSettings, updateSettings } from '../lib/api';
+import type { AppSettings, IntegrationItem } from '../lib/types';
 import { useTheme } from './ThemeContext';
 
-interface Platform {
-  id: string;
-  name: string;
-  icon: React.ReactNode;
-  status: 'connected' | 'disconnected' | 'pending';
-  permissions: string[];
-  lastSync?: string;
-  description: string;
-}
+const providerIcons: Record<string, ReactNode> = {
+  gmail: <Mail className="w-5 h-5" />,
+  'outlook-calendar': <Calendar className="w-5 h-5" />,
+  zoom: <Video className="w-5 h-5" />,
+  teams: <MessageSquare className="w-5 h-5" />,
+  linkedin: <Linkedin className="w-5 h-5" />,
+  slack: <Hash className="w-5 h-5" />,
+};
 
 export function SettingsView() {
-  const { theme, toggleTheme } = useTheme();
-  const platforms: Platform[] = [
-    {
-      id: 'email',
-      name: 'Gmail',
-      icon: <Mail className="w-5 h-5" />,
-      status: 'connected',
-      permissions: ['Read emails', 'Send emails', 'Access contacts'],
-      lastSync: '2 minutes ago',
-      description: 'Sync email conversations and extract insights'
-    },
-    {
-      id: 'calendar',
-      name: 'Outlook Calendar',
-      icon: <Calendar className="w-5 h-5" />,
-      status: 'connected',
-      permissions: ['Read calendar events', 'Create events', 'View attendees'],
-      lastSync: '15 minutes ago',
-      description: 'Auto-schedule meetings and track conversation contexts'
-    },
-    {
-      id: 'zoom',
-      name: 'Zoom',
-      icon: <Video className="w-5 h-5" />,
-      status: 'connected',
-      permissions: ['Record meetings', 'Access transcripts', 'View participants'],
-      lastSync: '1 hour ago',
-      description: 'Capture video call conversations and generate insights'
-    },
-    {
-      id: 'teams',
-      name: 'Microsoft Teams',
-      icon: <MessageSquare className="w-5 h-5" />,
-      status: 'disconnected',
-      permissions: ['Record meetings', 'Access chat history', 'View members'],
-      description: 'Integrate Teams conversations and video calls'
-    },
-    {
-      id: 'linkedin',
-      name: 'LinkedIn',
-      icon: <Linkedin className="w-5 h-5" />,
-      status: 'connected',
-      permissions: ['Read profile', 'Access connections', 'View messages'],
-      lastSync: '30 minutes ago',
-      description: 'Import professional background and connection data'
-    },
-    {
-      id: 'slack',
-      name: 'Slack',
-      icon: <Hash className="w-5 h-5" />,
-      status: 'pending',
-      permissions: ['Read messages', 'View channels', 'Access user info'],
-      description: 'Track workplace conversations and interactions'
-    }
-  ];
+  const { theme, applyTheme, toggleTheme } = useTheme();
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [integrations, setIntegrations] = useState<IntegrationItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
-  const getStatusColor = (status: Platform['status']) => {
+  const loadData = async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const [settingsResponse, integrationsResponse] = await Promise.all([getSettings(), getIntegrations()]);
+      setSettings(settingsResponse);
+      setIntegrations(integrationsResponse.items);
+      applyTheme(settingsResponse.theme);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load settings');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  const handleThemeToggle = async () => {
+    setMessage('');
+    const nextTheme = toggleTheme();
+    setSettings((prev) => prev ? { ...prev, theme: nextTheme } : prev);
+    try {
+      await updateSettings({ theme: nextTheme });
+      setMessage(`Theme updated to ${nextTheme}.`);
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'Unable to save theme');
+    }
+  };
+
+  const handleIntegrationClick = async (integration: IntegrationItem) => {
+    setMessage('');
+    setError('');
+    try {
+      if (integration.status === 'connected') {
+        await disconnectIntegration(integration.provider);
+        setMessage(`${integration.name} disconnected.`);
+      } else {
+        await connectIntegration(integration.provider, integration.permissions);
+        setMessage(`${integration.name} connected.`);
+      }
+      await loadData();
+    } catch (integrationError) {
+      setError(integrationError instanceof Error ? integrationError.message : 'Unable to update integration');
+    }
+  };
+
+  const handleExport = async (format: 'json' | 'csv') => {
+    setMessage('');
+    setError('');
+    try {
+      const response = await exportData(format);
+      setMessage(`Export created at ${response.path}`);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : 'Unable to export data');
+    }
+  };
+
+  const getStatusColor = (status: IntegrationItem['status']) => {
     switch (status) {
       case 'connected':
         return 'bg-green-50 text-green-700 border-green-200';
@@ -79,29 +91,7 @@ export function SettingsView() {
     }
   };
 
-  const getStatusIcon = (status: Platform['status']) => {
-    switch (status) {
-      case 'connected':
-        return <Check className="w-3.5 h-3.5" />;
-      case 'disconnected':
-        return <X className="w-3.5 h-3.5" />;
-      case 'pending':
-        return <AlertCircle className="w-3.5 h-3.5" />;
-    }
-  };
-
-  const getStatusText = (status: Platform['status']) => {
-    switch (status) {
-      case 'connected':
-        return 'Connected';
-      case 'disconnected':
-        return 'Not Connected';
-      case 'pending':
-        return 'Pending Setup';
-    }
-  };
-
-  const getStatusDot = (status: Platform['status']) => {
+  const getStatusDot = (status: IntegrationItem['status']) => {
     switch (status) {
       case 'connected':
         return 'bg-green-500';
@@ -112,106 +102,118 @@ export function SettingsView() {
     }
   };
 
-  const handlePlatformClick = (platform: Platform) => {
-    if (platform.status === 'connected') {
-      alert(`${platform.name} settings: Manage permissions, disconnect, or view sync history`);
-    } else {
-      alert(`Connect ${platform.name}: Authorization flow would start here`);
-    }
-  };
+  if (isLoading) {
+    return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading settings...</div>;
+  }
+
+  if (error && !settings) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+        <p className="mb-3">{error}</p>
+        <button onClick={() => void loadData()} className="rounded-lg bg-white px-4 py-2 text-red-700 border border-red-200">
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Theme Toggle */}
-      <div className="bg-white dark:bg-slate-800/50 rounded-xl p-5 border border-slate-200 dark:border-slate-700">
-        <h3 className="text-slate-900 dark:text-slate-100 font-semibold mb-3">Appearance</h3>
-        <button 
-          onClick={toggleTheme}
-          className="w-full text-left px-4 py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center justify-between group"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-cyan-500 rounded-lg flex items-center justify-center">
-              {theme === 'light' ? (
-                <Sun className="w-5 h-5 text-white" />
-              ) : (
-                <Moon className="w-5 h-5 text-white" />
-              )}
-            </div>
-            <div>
-              <div className="text-slate-900 dark:text-slate-100 font-medium">Theme</div>
-              <div className="text-slate-600 dark:text-slate-400 text-sm">{theme === 'light' ? 'Light Mode' : 'Dark Mode'}</div>
-            </div>
-          </div>
-          <div className="px-3 py-1.5 bg-slate-200 dark:bg-slate-600 rounded-lg text-slate-700 dark:text-slate-300 text-sm font-medium">
-            {theme === 'light' ? 'Switch to Dark' : 'Switch to Light'}
-          </div>
-        </button>
-      </div>
+      {message && <div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-700">{message}</div>}
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-      <div className="bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-900/20 dark:to-cyan-900/20 rounded-xl p-5 border border-teal-200 dark:border-teal-700/50">
+      <div className={`rounded-xl p-5 border ${
+        settings?.aiConfigured
+          ? 'bg-emerald-50 border-emerald-200'
+          : 'bg-amber-50 border-amber-200'
+      }`}>
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 bg-teal-100 dark:bg-teal-800/50 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Shield className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+            settings?.aiConfigured ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+          }`}>
+            <Sparkles className="w-5 h-5" />
           </div>
-          <div>
-            <h3 className="text-slate-900 dark:text-slate-100 font-semibold mb-1">Your Data is Protected</h3>
-            <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed">
-              Vertex uses end-to-end encryption and only accesses data with your explicit permission. You can revoke access at any time.
+          <div className="flex-1">
+            <h3 className={`font-semibold ${settings?.aiConfigured ? 'text-emerald-900' : 'text-amber-900'}`}>
+              {settings?.aiConfigured ? 'Gemini Connected' : 'Gemini API Key Missing'}
+            </h3>
+            <p className={`text-sm mt-1 ${settings?.aiConfigured ? 'text-emerald-800' : 'text-amber-800'}`}>
+              {settings?.aiConfigured
+                ? `AI summaries, OCR, insights, and action items are active using ${settings.aiModel || 'your configured Gemini model'}.`
+                : 'Add GEMINI_API_KEY to the project .env file and restart the backend to enable AI summaries, OCR, and richer insights.'}
             </p>
           </div>
         </div>
       </div>
 
-      <div>
-        <h2 className="text-slate-900 dark:text-slate-100 font-semibold text-lg mb-1 px-1">Platform Integrations</h2>
-        <p className="text-slate-600 dark:text-slate-400 text-sm mb-4 px-1">Manage connected platforms and permissions</p>
+      <div className="bg-white dark:bg-slate-800/50 rounded-xl p-5 border border-slate-200 dark:border-slate-700">
+        <h3 className="text-slate-900 dark:text-slate-100 font-semibold mb-3">Appearance</h3>
+        <button
+          onClick={() => void handleThemeToggle()}
+          className="w-full text-left px-4 py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center justify-between group"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center">
+              {theme === 'dark' ? <Moon className="w-5 h-5 text-slate-200" /> : <Sun className="w-5 h-5 text-amber-500" />}
+            </div>
+            <div>
+              <p className="text-slate-900 dark:text-slate-100 font-medium">{theme === 'dark' ? 'Dark mode' : 'Light mode'}</p>
+              <p className="text-slate-500 dark:text-slate-400 text-sm">Stored locally and synced to your account</p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+        </button>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800/50 rounded-xl p-5 border border-slate-200 dark:border-slate-700">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-slate-900 dark:text-slate-100 font-semibold">Connected Platforms</h3>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">These connections are stored in your backend account.</p>
+          </div>
+        </div>
 
         <div className="space-y-3">
-          {platforms.map((platform) => (
+          {integrations.map((integration) => (
             <button
-              key={platform.id}
-              onClick={() => handlePlatformClick(platform)}
-              className="w-full bg-white dark:bg-slate-800/50 rounded-lg p-4 border border-slate-200 dark:border-slate-700 hover:border-teal-300 dark:hover:border-teal-600 hover:shadow-md transition-all text-left group"
+              key={integration.provider}
+              onClick={() => void handleIntegrationClick(integration)}
+              className="w-full text-left bg-slate-50 dark:bg-slate-700/30 hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700 transition-all group"
             >
               <div className="flex items-start gap-3">
-                <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700/50 rounded-lg flex items-center justify-center text-slate-700 dark:text-slate-300 flex-shrink-0 group-hover:bg-slate-200 dark:group-hover:bg-slate-700 transition-colors">
-                  {platform.icon}
+                <div className="w-10 h-10 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200">
+                  {providerIcons[integration.provider]}
                 </div>
-
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2 mb-1">
-                    <h3 className="text-slate-900 dark:text-slate-100 font-semibold">{platform.name}</h3>
+                    <h3 className="text-slate-900 dark:text-slate-100 font-semibold">{integration.name}</h3>
                     <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-500 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors flex-shrink-0 mt-1" />
                   </div>
-                  
-                  <p className="text-slate-600 dark:text-slate-400 text-sm mb-3">
-                    {platform.description}
-                  </p>
+                  <p className="text-slate-600 dark:text-slate-400 text-sm mb-3">{integration.description}</p>
 
                   <div className="flex items-center gap-2 flex-wrap">
-                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border ${getStatusColor(platform.status)}`}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${getStatusDot(platform.status)}`}></div>
-                      <span className="capitalize">{platform.status}</span>
+                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border ${getStatusColor(integration.status)}`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${getStatusDot(integration.status)}`}></div>
+                      <span className="capitalize">{integration.status}</span>
                     </div>
-
-                    {platform.lastSync && (
+                    {integration.lastSyncAt && (
                       <div className="flex items-center gap-1 px-2.5 py-1 bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 rounded-full text-xs">
                         <div className="w-1.5 h-1.5 bg-slate-400 dark:bg-slate-500 rounded-full"></div>
-                        <span>Synced {platform.lastSync}</span>
+                        <span>Synced {new Date(integration.lastSyncAt).toLocaleString()}</span>
                       </div>
                     )}
                   </div>
 
-                  {platform.status === 'connected' && (
-                    <div className="bg-slate-50 dark:bg-slate-700/30 rounded-lg p-3 border border-slate-200 dark:border-slate-600 mt-3">
+                  {integration.permissions.length > 0 && (
+                    <div className="bg-white dark:bg-slate-800/50 rounded-lg p-3 border border-slate-200 dark:border-slate-600 mt-3">
                       <div className="flex items-center gap-2 mb-2">
                         <Shield className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
-                        <span className="text-xs text-slate-700 dark:text-slate-300 font-medium">Active Permissions:</span>
+                        <span className="text-xs text-slate-700 dark:text-slate-300 font-medium">Permissions</span>
                       </div>
                       <ul className="space-y-1">
-                        {platform.permissions.map((permission, index) => (
-                          <li key={index} className="text-xs text-slate-600 dark:text-slate-400 flex items-start gap-1.5">
-                            <Check className="w-3 h-3 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                        {integration.permissions.map((permission) => (
+                          <li key={permission} className="text-xs text-slate-600 dark:text-slate-400 flex items-start gap-1.5">
+                            {integration.status === 'connected' ? <Check className="w-3 h-3 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" /> : <AlertCircle className="w-3 h-3 text-yellow-500 mt-0.5 flex-shrink-0" />}
                             <span>{permission}</span>
                           </li>
                         ))}
@@ -228,24 +230,28 @@ export function SettingsView() {
       <div className="bg-white dark:bg-slate-800/50 rounded-xl p-5 border border-slate-200 dark:border-slate-700">
         <h3 className="text-slate-900 dark:text-slate-100 font-semibold mb-3">Additional Settings</h3>
         <div className="space-y-2">
-          <button className="w-full text-left px-4 py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+          <div className="w-full text-left px-4 py-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
             <div className="flex items-center justify-between">
-              <span className="text-slate-700 dark:text-slate-300">Notification Preferences</span>
-              <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+              <span className="text-slate-700 dark:text-slate-300">Notifications</span>
+              <span className="text-xs text-slate-500">{settings?.notifications ? 'Saved' : 'Default'}</span>
             </div>
-          </button>
-          <button className="w-full text-left px-4 py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+          </div>
+          <div className="w-full text-left px-4 py-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
             <div className="flex items-center justify-between">
               <span className="text-slate-700 dark:text-slate-300">Privacy & Data</span>
-              <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+              <span className="text-xs text-slate-500">Managed server-side</span>
             </div>
-          </button>
-          <button className="w-full text-left px-4 py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-700 dark:text-slate-300">Export Data</span>
-              <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-            </div>
-          </button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => void handleExport('json')} className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center justify-center gap-2 text-slate-700 dark:text-slate-300">
+              <Download className="w-4 h-4" />
+              JSON Export
+            </button>
+            <button onClick={() => void handleExport('csv')} className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center justify-center gap-2 text-slate-700 dark:text-slate-300">
+              <Download className="w-4 h-4" />
+              CSV Export
+            </button>
+          </div>
         </div>
       </div>
     </div>

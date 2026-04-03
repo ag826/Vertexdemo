@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Mail, Calendar, Phone, UserPlus, Share2, Clock, ChevronRight, Zap } from 'lucide-react';
-import type { SuggestedAction } from '../App';
+import type { SuggestedAction } from '../lib/types';
 import { ActionModal } from './ActionModal';
 
 interface SuggestedActionsProps {
   actions: SuggestedAction[];
   contactName: string;
+  onExecute: (action: SuggestedAction) => Promise<{ subject?: string; body?: string } | void>;
+  onComplete: (action: SuggestedAction) => Promise<void>;
 }
 
-export function SuggestedActions({ actions, contactName }: SuggestedActionsProps) {
+export function SuggestedActions({ actions, contactName, onExecute, onComplete }: SuggestedActionsProps) {
   const [selectedAction, setSelectedAction] = useState<SuggestedAction | null>(null);
 
   const getActionIcon = (type: SuggestedAction['type']) => {
@@ -67,16 +69,18 @@ export function SuggestedActions({ actions, contactName }: SuggestedActionsProps
     }
   };
 
-  if (actions.length === 0) {
+  const visibleActions = actions.filter((action) => action.status !== 'completed');
+
+  if (visibleActions.length === 0) {
     return null;
   }
 
   return (
     <>
       <section className="bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-900/20 dark:to-cyan-900/20 rounded-xl p-6 border border-teal-200 dark:border-teal-700/50 shadow-sm">
-        <div className="flex items-center gap-2.5 mb-5">
-          <div className="w-10 h-10 bg-teal-100 dark:bg-teal-900/50 rounded-full flex items-center justify-center shadow-sm">
-            <Zap className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-teal-200 dark:border-teal-700 flex items-center justify-center">
+            <Zap className="w-5 h-5 text-teal-600 dark:text-teal-300" />
           </div>
           <div className="flex-1">
             <h2 className="text-slate-900 dark:text-slate-100 font-semibold text-lg">Suggested Actions</h2>
@@ -85,7 +89,7 @@ export function SuggestedActions({ actions, contactName }: SuggestedActionsProps
         </div>
 
         <div className="space-y-3">
-          {actions.map((action) => (
+          {visibleActions.map((action) => (
             <button
               key={action.id}
               onClick={() => setSelectedAction(action)}
@@ -101,24 +105,20 @@ export function SuggestedActions({ actions, contactName }: SuggestedActionsProps
                     <h3 className="text-slate-900 dark:text-slate-100 font-medium leading-snug">{action.title}</h3>
                     <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-500 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors flex-shrink-0 mt-1" />
                   </div>
-                  
-                  <p className="text-slate-600 dark:text-slate-400 text-sm mb-3 leading-relaxed">
-                    {action.description}
-                  </p>
+
+                  <p className="text-slate-600 dark:text-slate-400 text-sm mb-3 leading-relaxed">{action.description}</p>
 
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border bg-gradient-to-r ${getPriorityColor(action.priority)}`}>
                       <div className={`w-1.5 h-1.5 rounded-full ${getPriorityDot(action.priority)}`}></div>
                       <span className="capitalize">{action.priority} priority</span>
                     </div>
-
                     {action.dueDate && (
                       <div className="flex items-center gap-1 px-2.5 py-1 bg-slate-100 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300 rounded-full text-xs border border-slate-200 dark:border-slate-600">
                         <Clock className="w-3 h-3" />
                         <span>{action.dueDate}</span>
                       </div>
                     )}
-
                     <div className="flex items-center gap-1 px-2.5 py-1 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 rounded-full text-xs border border-teal-200 dark:border-teal-700">
                       <Zap className="w-3 h-3" />
                       <span>View context</span>
@@ -131,13 +131,14 @@ export function SuggestedActions({ actions, contactName }: SuggestedActionsProps
         </div>
       </section>
 
-      {/* Transcript Modal */}
       {selectedAction && (
         <ActionModal
-          isOpen={true}
+          isOpen
           onClose={() => setSelectedAction(null)}
           action={selectedAction}
           contactName={contactName}
+          onExecute={onExecute}
+          onComplete={onComplete}
         />
       )}
     </>

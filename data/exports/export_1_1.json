@@ -1,0 +1,78 @@
+{
+  "contacts": [
+    {
+      "id": 1,
+      "name": "Sarah Doe",
+      "title": "VP Product",
+      "company": "Acme",
+      "location": "New York, NY",
+      "linkedInUrl": "linkedin.com/in/sarahdoe",
+      "profileImage": "https://api.dicebear.com/8.x/thumbs/svg?seed=sarah-doe",
+      "dateAdded": "2026-04-02",
+      "notes": "Sarah is leading AI products at Acme. She loves coffee roasting and wants to follow up next week.",
+      "conversationDuration": "5m 0s",
+      "conversationDurationSeconds": 300,
+      "socialProfiles": {
+        "linkedin": "linkedin.com/in/sarahdoe"
+      },
+      "keyFacts": [
+        {
+          "id": 1,
+          "text": "Sarah is leading AI products at Acme.",
+          "source": "Conversation",
+          "category": "Professional",
+          "transcript": {
+            "id": 1,
+            "platform": "In-Person",
+            "occasion": "Coffee chat",
+            "date": "2026-04-02",
+            "time": "16:16",
+            "location": "NYC cafe",
+            "fullTranscript": "Sarah is leading AI products at Acme. She loves coffee roasting and wants to follow up next week.",
+            "highlightedText": "Sarah is leading AI products at Acme."
+          }
+        }
+      ],
+      "funFacts": [
+        {
+          "id": 2,
+          "text": "She loves coffee roasting and wants to follow up next week.",
+          "source": "Conversation",
+          "category": "Interest",
+          "transcript": {
+            "id": 2,
+            "platform": "In-Person",
+            "occasion": "Coffee chat",
+            "date": "2026-04-02",
+            "time": "16:16",
+            "location": "NYC cafe",
+            "fullTranscript": "Sarah is leading AI products at Acme. She loves coffee roasting and wants to follow up next week.",
+            "highlightedText": "She loves coffee roasting and wants to follow up next week."
+          }
+        }
+      ],
+      "suggestedActions": [
+        {
+          "id": 1,
+          "contactId": 1,
+          "type": "follow-up",
+          "title": "Follow up with Sarah Doe",
+          "description": "Send a follow-up message based on the conversation highlights.",
+          "priority": "medium",
+          "dueDate": "2026-04-09",
+          "status": "completed",
+          "transcript": {
+            "id": 3,
+            "platform": "In-Person",
+            "occasion": "Coffee chat",
+            "date": "2026-04-02",
+            "time": "16:16",
+            "location": "NYC cafe",
+            "fullTranscript": "Sarah is leading AI products at Acme. She loves coffee roasting and wants to follow up next week.",
+            "highlightedText": "Sarah is leading AI products at Acme."
+          }
+        }
+      ]
+    }
+  ]
+}
