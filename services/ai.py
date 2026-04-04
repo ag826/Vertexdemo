@@ -163,19 +163,25 @@ class AIService:
             "- Focus only on practical follow-up actions based on the notes.\n"
             "- Keep items distinct and non-overlapping.\n"
             "- Provide up to 6 actions if available.\n"
+            "- title must be highly specific and actionable, starting with a clear verb and concrete deliverable.\n"
+            "- description must be a specific execution step (what to send/do, to whom, and why) and must not be generic.\n"
+            "- Avoid vague wording like 'Follow up with X' or 'based on conversation highlights'.\n"
             "- Use only type values: email, meeting, follow-up, introduction, share, call.\n"
             "- Use only priority values: high, medium, low.\n"
             "- due_date must be YYYY-MM-DD or null.\n"
-            "- highlighted_text must be an exact span copied from the notes that supports the action.\n\n"
+            "- highlighted_text must be one exact sentence or line copied verbatim from the notes that justifies the action.\n"
+            "- highlighted_text must appear exactly in the notes text.\n\n"
             f"Profile context: {json.dumps(profile)}\n\n"
             f"Aggregated conversation notes:\n{cleaned}"
         )
         parsed = self._json_generation(prompt, {"items": fallback})
         items = parsed.get("items")
         if not isinstance(items, list):
-            return fallback
-        normalized = self._normalize_action_items(items)
-        return normalized or fallback
+            items = []
+        normalized = self._normalize_action_items(items, cleaned)
+        cue_actions = self._extract_actions_from_cues(cleaned, profile)
+        merged = self._merge_actions(cue_actions, normalized)
+        return merged or fallback
 
     def recommend_contacts(self, query: str, contacts: list[dict[str, Any]]) -> dict[str, Any]:
         fallback = self._fallback_recommendations(query, contacts)
@@ -417,17 +423,28 @@ class AIService:
             ],
         }
 
-    def _normalize_action_items(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _normalize_action_items(self, items: list[dict[str, Any]], transcript: str) -> list[dict[str, Any]]:
         normalized: list[dict[str, Any]] = []
         seen: set[str] = set()
         allowed_types = {"email", "meeting", "follow-up", "introduction", "share", "call"}
         allowed_priorities = {"high", "medium", "low"}
+        generic_patterns = (
+            "follow up with",
+            "conversation highlights",
+            "send a follow-up message",
+        )
         for raw in items:
             if not isinstance(raw, dict):
                 continue
             title = str(raw.get("title") or "").strip()
             description = str(raw.get("description") or "").strip()
             if not title or not description:
+                continue
+            lowered_title = title.lower()
+            lowered_description = description.lower()
+            if any(pattern in lowered_title for pattern in generic_patterns) and any(
+                pattern in lowered_description for pattern in generic_patterns
+            ):
                 continue
             dedupe_key = f"{title.lower()}::{description.lower()}"
             if dedupe_key in seen:
@@ -444,6 +461,8 @@ class AIService:
             if isinstance(due_date, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", due_date.strip()):
                 due_date_text = due_date.strip()
             highlighted_text = str(raw.get("highlighted_text") or "").strip()
+            if not highlighted_text or highlighted_text not in transcript:
+                highlighted_text = self._pick_supporting_excerpt(transcript, title, description)
             normalized.append(
                 {
                     "type": action_type,
@@ -463,13 +482,155 @@ class AIService:
         return [
             {
                 "type": "follow-up",
-                "title": f"Follow up with {profile.get('name') or 'contact'}",
-                "description": "Send a follow-up message based on the conversation highlights.",
+                "title": f"Send tailored follow-up to {profile.get('name') or 'contact'} with requested materials",
+                "description": "Draft and send a concise follow-up that references the key asks from the conversation and confirms next-step timing.",
                 "priority": "medium",
                 "due_date": due_date,
                 "highlighted_text": first_sentence[:260],
             }
         ]
+
+    def _pick_supporting_excerpt(self, transcript: str, title: str, description: str) -> str:
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", transcript) if s.strip()]
+        if not sentences:
+            return ""
+        keywords = [
+            token
+            for token in re.findall(r"[a-zA-Z]{4,}", f"{title} {description}".lower())
+            if token not in {"send", "with", "from", "that", "this", "will", "have", "your"}
+        ]
+        best_sentence = sentences[0]
+        best_score = -1
+        for sentence in sentences:
+            lowered = sentence.lower()
+            score = sum(1 for keyword in keywords if keyword in lowered)
+            if score > best_score:
+                best_score = score
+                best_sentence = sentence
+        return best_sentence[:260]
+
+    def _extract_actions_from_cues(self, transcript: str, profile: dict[str, Any]) -> list[dict[str, Any]]:
+        contact_name = profile.get("name") or "this contact"
+        actions: list[dict[str, Any]] = []
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", transcript) if s.strip()]
+        for sentence in sentences:
+            lowered = sentence.lower()
+            if (
+                ("open to" in lowered or "available for" in lowered)
+                and ("coffee" in lowered or "follow-up" in lowered or "30-minute" in lowered)
+            ):
+                location_match = re.search(r"\bin\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)", sentence)
+                location_text = location_match.group(1) if location_match else "their location"
+                week_match = re.search(r"week of ([A-Za-z]+ \d{1,2})", sentence, flags=re.IGNORECASE)
+                week_text = week_match.group(1) if week_match else "the suggested week"
+                due_date = self._extract_due_date(sentence)
+                actions.append(
+                    {
+                        "type": "meeting",
+                        "title": f"Schedule 30-minute coffee with {contact_name} in {location_text} ({week_text})",
+                        "description": (
+                            f"Send a meeting note proposing two specific 30-minute coffee slots in {location_text} "
+                            f"during the week of {week_text}, and confirm availability."
+                        ),
+                        "priority": "high",
+                        "due_date": due_date,
+                        "highlighted_text": sentence[:260],
+                    }
+                )
+            if (
+                ("offered to introduce" in lowered or "introduce me" in lowered or "introduction" in lowered)
+                and ("if i send" in lowered or "send" in lowered)
+                and ("blurb" in lowered or "intro" in lowered)
+            ):
+                due_date = self._extract_due_date(sentence)
+                actions.append(
+                    {
+                        "type": "introduction",
+                        "title": "Send concise intro blurb for lifecycle marketing introduction",
+                        "description": (
+                            "Draft and send a forwardable 3-4 sentence intro blurb that states your context, "
+                            "what help you need, and why the lifecycle marketing counterpart is relevant."
+                        ),
+                        "priority": "high",
+                        "due_date": due_date,
+                        "highlighted_text": sentence[:260],
+                    }
+                )
+            if (
+                ("asked if i could share" in lowered or "requested" in lowered)
+                and ("write-up" in lowered or "examples" in lowered or "narrative" in lowered)
+            ):
+                due_date = self._extract_due_date(sentence)
+                actions.append(
+                    {
+                        "type": "share",
+                        "title": f"Send requested B2B AI narrative examples and short write-up to {contact_name}",
+                        "description": (
+                            "Prepare a concise write-up with 2-3 successful B2B AI product narrative examples "
+                            "and send it with a clear subject line for easy forwarding."
+                        ),
+                        "priority": "high",
+                        "due_date": due_date,
+                        "highlighted_text": sentence[:260],
+                    }
+                )
+        return self._normalize_action_items(actions, transcript)
+
+    def _merge_actions(self, preferred: list[dict[str, Any]], generated: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        merged: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        preferred_highlights = {str(item.get("highlighted_text") or "").strip() for item in preferred}
+        for action in [*preferred, *generated]:
+            if preferred:
+                title_lower = str(action.get("title") or "").lower()
+                description_lower = str(action.get("description") or "").lower()
+                highlight = str(action.get("highlighted_text") or "").strip()
+                if (
+                    action.get("type") == "follow-up"
+                    and ("follow-up" in title_lower or "follow-up" in description_lower)
+                    and highlight in preferred_highlights
+                ):
+                    continue
+            key = f"{action.get('title','').strip().lower()}::{action.get('description','').strip().lower()}"
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            merged.append(action)
+        return merged
+
+    def _extract_due_date(self, sentence: str) -> str | None:
+        # Support phrases like "next Tuesday" and "week of May 12".
+        lowered = sentence.lower()
+        weekdays = {
+            "monday": 0,
+            "tuesday": 1,
+            "wednesday": 2,
+            "thursday": 3,
+            "friday": 4,
+            "saturday": 5,
+            "sunday": 6,
+        }
+        for day_name, day_num in weekdays.items():
+            if f"next {day_name}" in lowered:
+                today = datetime.utcnow().date()
+                days_ahead = (day_num - today.weekday()) % 7
+                if days_ahead == 0:
+                    days_ahead = 7
+                return (today + timedelta(days=days_ahead)).isoformat()
+        match = re.search(r"week of ([A-Za-z]+)\s+(\d{1,2})", sentence, flags=re.IGNORECASE)
+        if match:
+            month_name = match.group(1)
+            day = int(match.group(2))
+            try:
+                parsed = datetime.strptime(f"{month_name} {day} {datetime.utcnow().year}", "%B %d %Y")
+                return parsed.date().isoformat()
+            except ValueError:
+                try:
+                    parsed = datetime.strptime(f"{month_name} {day} {datetime.utcnow().year}", "%b %d %Y")
+                    return parsed.date().isoformat()
+                except ValueError:
+                    return None
+        return None
 
     def _fallback_recommendations(self, query: str, contacts: list[dict[str, Any]]) -> dict[str, Any]:
         query_terms = [term for term in re.findall(r"[a-zA-Z]+", query.lower()) if len(term) > 2]

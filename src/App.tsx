@@ -8,7 +8,7 @@ import { SettingsView } from './components/SettingsView';
 import { ThemeProvider } from './components/ThemeContext';
 import { TranscribingView } from './components/TranscribingView';
 import { WelcomeScreen } from './components/WelcomeScreen';
-import { completeAction, deleteContact, executeAction, getContact, getContacts, getMe, login, register, setStoredToken, updateContactNotes } from './lib/api';
+import { completeAction, deleteContact, executeAction, getContact, getContacts, getMe, login, refreshContactAnalysis, register, setStoredToken, updateContactNotes } from './lib/api';
 import type { Contact, ContactSummary, SuggestedAction, User } from './lib/types';
 import vertexLogo from 'figma:asset/62edb3c51125a4b122ed2c06dafbbf9a9e7bec60.png';
 
@@ -121,6 +121,12 @@ function AppShell() {
     await loadContacts('');
   };
 
+  const handleRefreshContact = async (contactId: number) => {
+    const response = await refreshContactAnalysis(contactId);
+    setSelectedContact(response.contact);
+    await loadContacts();
+  };
+
   const refreshSelectedContact = async () => {
     if (!selectedContact) return;
     const response = await getContact(selectedContact.id);
@@ -212,6 +218,7 @@ function AppShell() {
           onCompleteAction={handleCompleteAction}
           onAddConversation={handleStartContactRecording}
           onDeleteContact={handleDeleteContact}
+          onRefreshContact={handleRefreshContact}
         />
       );
     }

@@ -9,6 +9,8 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from backend.database import (
@@ -38,6 +40,11 @@ ai_service = AIService()
 transcription_service = TranscriptionService()
 EXPORT_DIR = Path(__file__).resolve().parent.parent / "data" / "exports"
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+FRONTEND_BUILD_DIR = Path(__file__).resolve().parent.parent / "build"
+FRONTEND_ASSETS_DIR = FRONTEND_BUILD_DIR / "assets"
+
+if FRONTEND_ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS_DIR), name="assets")
 
 
 class RegisterRequest(BaseModel):
@@ -284,7 +291,7 @@ def _load_contact(conn: Any, contact_id: int, user_id: int) -> dict[str, Any] | 
             "source": insight["source"],
             "category": insight["category"],
             "transcript": _format_transcript(
-                transcript_row, transcript_row["full_text"] if transcript_row else ""
+                transcript_row, transcript_row["text"] if transcript_row else ""
             ),
         }
         if insight["section"] == "key_fact":
@@ -317,7 +324,7 @@ def _load_contact(conn: Any, contact_id: int, user_id: int) -> dict[str, Any] | 
                 "dueDate": action["due_date"],
                 "status": action["status"],
                 "transcript": _format_transcript(
-                    transcript_row, transcript_row["full_text"] if transcript_row else ""
+                    transcript_row, transcript_row["text"] if transcript_row else ""
                 ),
             }
         )
@@ -725,6 +732,20 @@ def delete_contact(contact_id: int, current_user: CurrentUser) -> dict[str, bool
     return {"success": True}
 
 
+@app.post("/api/contacts/{contact_id}/refresh-analysis")
+def refresh_contact_analysis(contact_id: int, current_user: CurrentUser) -> dict[str, Any]:
+    with get_db() as conn:
+        exists = conn.execute(
+            "SELECT id FROM contacts WHERE id = ? AND user_id = ?",
+            (contact_id, current_user["id"]),
+        ).fetchone()
+        if not exists:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        _rebuild_contact_analysis(conn, current_user["id"], contact_id)
+        contact = _load_contact(conn, contact_id, current_user["id"])
+    return {"contact": contact}
+
+
 @app.get("/api/contacts/{contact_id}/actions")
 def contact_actions(contact_id: int, current_user: CurrentUser) -> dict[str, Any]:
     with get_db() as conn:
@@ -978,7 +999,7 @@ def all_actions(current_user: CurrentUser, status_filter: str = Query(default="o
                     "date": row["event_date"],
                     "time": row["event_time"],
                     "location": row["location"],
-                    "fullTranscript": row["full_text"] or "",
+                    "fullTranscript": row["text"] or row["full_text"] or "",
                     "highlightedText": row["highlighted_text"],
                 } if row["platform"] else None,
             }
@@ -1228,3 +1249,26 @@ def create_export(payload: ExportRequest, current_user: CurrentUser) -> dict[str
             (str(file_path), utc_now(), export_id),
         )
     return {"exportId": export_id, "status": "completed", "path": str(file_path)}
+
+
+@app.get("/", include_in_schema=False)
+def serve_root() -> FileResponse:
+    index_file = FRONTEND_BUILD_DIR / "index.html"
+    if not index_file.exists():
+        raise HTTPException(status_code=404, detail="Frontend build not found")
+    return FileResponse(index_file)
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_spa(full_path: str) -> FileResponse:
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    candidate = FRONTEND_BUILD_DIR / full_path
+    if candidate.exists() and candidate.is_file():
+        return FileResponse(candidate)
+
+    index_file = FRONTEND_BUILD_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
+    raise HTTPException(status_code=404, detail="Frontend build not found")

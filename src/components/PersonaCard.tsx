@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Briefcase, MapPin, Linkedin, Clock, Lightbulb, AlertCircle, Edit2, Check, X, MessageSquare, Users, Globe, Mail, Hash, ChevronRight, FileText, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Briefcase, MapPin, Linkedin, Clock, Lightbulb, AlertCircle, Edit2, Check, X, MessageSquare, Users, Globe, Mail, Hash, ChevronRight, FileText, Plus, Trash2, RefreshCcw } from 'lucide-react';
 import type { Contact, Insight, SuggestedAction } from '../lib/types';
 import { TranscriptModal } from './TranscriptModal';
 import { SuggestedActions } from './SuggestedActions';
@@ -12,9 +12,10 @@ interface PersonaCardProps {
   onCompleteAction: (action: SuggestedAction) => Promise<void>;
   onAddConversation: () => void;
   onDeleteContact: (contactId: number) => Promise<void>;
+  onRefreshContact: (contactId: number) => Promise<void>;
 }
 
-export function PersonaCard({ contact, onBack, onUpdateNotes, onExecuteAction, onCompleteAction, onAddConversation, onDeleteContact }: PersonaCardProps) {
+export function PersonaCard({ contact, onBack, onUpdateNotes, onExecuteAction, onCompleteAction, onAddConversation, onDeleteContact, onRefreshContact }: PersonaCardProps) {
   const [selectedInsight, setSelectedInsight] = useState<{ insight: Insight; text: string } | null>(null);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [editedNotes, setEditedNotes] = useState(contact.notes);
@@ -24,6 +25,8 @@ export function PersonaCard({ contact, onBack, onUpdateNotes, onExecuteAction, o
   const [showAllFunFacts, setShowAllFunFacts] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleSaveNotes = async () => {
     setSaveError('');
@@ -55,6 +58,18 @@ export function PersonaCard({ contact, onBack, onUpdateNotes, onExecuteAction, o
       setDeleteError(error instanceof Error ? error.message : 'Unable to delete contact');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleRefreshContact = async () => {
+    setRefreshError('');
+    setIsRefreshing(true);
+    try {
+      await onRefreshContact(contact.id);
+    } catch (error) {
+      setRefreshError(error instanceof Error ? error.message : 'Unable to refresh contact analysis');
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -358,6 +373,23 @@ export function PersonaCard({ contact, onBack, onUpdateNotes, onExecuteAction, o
           <div className="text-center text-slate-500 text-sm pt-2">
             Added {new Date(contact.dateAdded).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
           </div>
+
+          <section className="rounded-xl border border-blue-200 bg-blue-50 p-6 shadow-sm">
+            <h2 className="text-blue-900 font-semibold text-lg mb-2">Refresh Gemini Analysis</h2>
+            <p className="text-sm text-blue-800 mb-4">
+              Manually rerun Gemini extraction for Things to Know, Fun Facts, and Suggested Actions using all saved conversation notes.
+            </p>
+            {refreshError && <div className="mb-3 rounded-lg border border-blue-300 bg-white px-4 py-3 text-sm text-blue-800">{refreshError}</div>}
+            <button
+              type="button"
+              onClick={() => void handleRefreshContact()}
+              disabled={isRefreshing}
+              className="inline-flex items-center gap-2 rounded-lg border border-blue-300 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+            >
+              <RefreshCcw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? 'Refreshing...' : 'Refresh with Gemini'}
+            </button>
+          </section>
 
           <section className="rounded-xl border border-red-200 bg-red-50 p-6 shadow-sm">
             <h2 className="text-red-900 font-semibold text-lg mb-2">Delete Contact</h2>

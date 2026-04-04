@@ -93,6 +93,12 @@ export async function deleteContact(contactId: number) {
   });
 }
 
+export async function refreshContactAnalysis(contactId: number) {
+  return request<{ contact: Contact }>(`/contacts/${contactId}/refresh-analysis`, {
+    method: 'POST',
+  });
+}
+
 export async function createRecording(platform: string, sourceType = 'manual') {
   return request<{ recording: Recording }>('/recordings', {
     method: 'POST',
