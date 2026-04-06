@@ -1,32 +1,20 @@
 {
   "$schema": "https://schema.railpack.com",
+  "provider": "node",
   "packages": {
     "node": "22",
     "python": "3.12"
   },
   "steps": {
     "install": {
-      "inputs": [
-        {
-          "local": true
-        },
-        {
-          "step": "packages:mise"
-        }
-      ],
       "commands": [
-        "npm install",
+        "...",
         "pip install --no-cache-dir -r requirements.txt"
       ]
     },
     "build": {
-      "inputs": [
-        {
-          "step": "install"
-        }
-      ],
       "commands": [
-        "npm run build"
+        "..."
       ]
     }
   },
