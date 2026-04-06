@@ -9,7 +9,7 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -623,6 +623,14 @@ CurrentUser = Annotated[dict[str, Any], Depends(get_current_user)]
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    print(
+        "frontend_build_status",
+        {
+            "build_exists": FRONTEND_BUILD_DIR.exists(),
+            "index_exists": (FRONTEND_BUILD_DIR / "index.html").exists(),
+            "assets_exists": FRONTEND_ASSETS_DIR.exists(),
+        },
+    )
 
 
 @app.get("/api/health")
@@ -1252,15 +1260,17 @@ def create_export(payload: ExportRequest, current_user: CurrentUser) -> dict[str
 
 
 @app.get("/", include_in_schema=False)
-def serve_root() -> FileResponse:
+def serve_root() -> FileResponse | HTMLResponse:
     index_file = FRONTEND_BUILD_DIR / "index.html"
     if not index_file.exists():
-        raise HTTPException(status_code=404, detail="Frontend build not found")
+        return HTMLResponse(
+            "<html><body><h1>Vertex API is running.</h1><p>Frontend build not found in container.</p></body></html>"
+        )
     return FileResponse(index_file)
 
 
 @app.get("/{full_path:path}", include_in_schema=False)
-def serve_spa(full_path: str) -> FileResponse:
+def serve_spa(full_path: str) -> FileResponse | HTMLResponse:
     if full_path.startswith("api/"):
         raise HTTPException(status_code=404, detail="Not found")
 
@@ -1271,4 +1281,6 @@ def serve_spa(full_path: str) -> FileResponse:
     index_file = FRONTEND_BUILD_DIR / "index.html"
     if index_file.exists():
         return FileResponse(index_file)
-    raise HTTPException(status_code=404, detail="Frontend build not found")
+    return HTMLResponse(
+        "<html><body><h1>Vertex API is running.</h1><p>Frontend build not found in container.</p></body></html>"
+    )
