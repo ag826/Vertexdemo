@@ -1,6 +1,5 @@
 fastapi
 uvicorn
 pydantic
-email-validator
 SpeechRecognition
 python-multipart
