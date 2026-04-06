@@ -6,6 +6,14 @@
   },
   "steps": {
     "install": {
+      "inputs": [
+        {
+          "local": true
+        },
+        {
+          "step": "packages:mise"
+        }
+      ],
       "commands": [
         "npm install",
         "pip install --no-cache-dir -r requirements.txt"
