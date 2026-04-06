@@ -1259,8 +1259,8 @@ def create_export(payload: ExportRequest, current_user: CurrentUser) -> dict[str
     return {"exportId": export_id, "status": "completed", "path": str(file_path)}
 
 
-@app.get("/", include_in_schema=False)
-def serve_root() -> FileResponse | HTMLResponse:
+@app.get("/", include_in_schema=False, response_model=None)
+def serve_root():
     index_file = FRONTEND_BUILD_DIR / "index.html"
     if not index_file.exists():
         return HTMLResponse(
@@ -1269,8 +1269,8 @@ def serve_root() -> FileResponse | HTMLResponse:
     return FileResponse(index_file)
 
 
-@app.get("/{full_path:path}", include_in_schema=False)
-def serve_spa(full_path: str) -> FileResponse | HTMLResponse:
+@app.get("/{full_path:path}", include_in_schema=False, response_model=None)
+def serve_spa(full_path: str):
     if full_path.startswith("api/"):
         raise HTTPException(status_code=404, detail="Not found")
 
