@@ -8,12 +8,12 @@
   "steps": {
     "install": {
       "commands": [
-        "...",
-        "pip install --no-cache-dir -r requirements.txt"
+        "..."
       ]
     },
     "build": {
       "commands": [
+        "pip install --no-cache-dir -r requirements.txt",
         "..."
       ]
     }
