@@ -436,7 +436,7 @@ def _rebuild_contact_analysis(conn: Any, user_id: int, contact_id: int) -> None:
         return
 
     combined_text = "\n\n".join(
-        f"[{row['platform']} | {row['occasion'] or 'Conversation'} | {row['location'] or 'Unknown location'}]\n{row['full_text']}"
+        row["full_text"].strip()
         for row in recordings
         if row["full_text"].strip()
     ).strip()

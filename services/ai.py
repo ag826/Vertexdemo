@@ -90,65 +90,106 @@ class AIService:
         if not cleaned:
             return fallback
         prompt = (
-            "You are extracting CRM persona insights from aggregated conversation notes.\n"
-            "Return strict JSON with one key: items.\n"
-            "items must be an array of distinct points with keys: text, source, category, highlighted_text.\n"
-            "Rules:\n"
-            "- Focus only on 'Things to Know' (professional background, goals, context that helps future conversations).\n"
-            "- Write each text point in third person.\n"
-            "- Keep each point concise and non-overlapping.\n"
-            "- Provide up to 6 points if available.\n"
-            "- highlighted_text must be an exact span copied from the notes that supports the point.\n"
-            "- Use only source values: Conversation, LinkedIn, Mutual Connection, Website, Social Media, Email.\n"
-            "- Use only category values: Professional, Personal, Interest, Background, Goal.\n\n"
-            f"Profile context: {json.dumps(profile)}\n\n"
-            f"Aggregated conversation notes:\n{cleaned}"
+            "Extract the 3 most important \"things to know\" about the person to prepare for a future meeting, "
+            "using only the conversation note.\n\n"
+            "Requirements:\n"
+            "- Return output strictly in valid JSON format.\n"
+            "- Output must be an array under the key \"key_insights\".\n"
+            "- Include exactly 3 items.\n"
+            "- Each item must contain:\n"
+            "  - \"insight\": a concise, high-value takeaway about the person.\n"
+            "  - \"category\": one of [\"professional_focus\", \"current_priority\", \"pain_point\", "
+            "\"personal_context\", \"relationship_opportunity\"].\n"
+            "  - \"quote\": an exact quote or minimally edited extract from the conversation note that justifies the insight.\n"
+            "  - \"source\": must be \"conversation_note\".\n"
+            "- Prioritize insights directly useful for guiding the meeting (what to discuss, positioning).\n"
+            "- Prioritize current priorities, challenges, and opportunities.\n"
+            "- Avoid trivial or purely biographical details unless they support rapport-building or strategy.\n"
+            "- Do not include redundant or overlapping insights.\n\n"
+            f"Conversation note:\n{cleaned}"
         )
-        parsed = self._json_generation(prompt, {"items": fallback})
-        items = parsed.get("items")
+        parsed = self._json_generation(prompt, {"key_insights": []})
+        items = parsed.get("key_insights")
         if not isinstance(items, list):
-            return fallback
-        normalized = self._normalize_section_items(
-            items,
-            allowed_categories={"Professional", "Background", "Goal", "Personal", "Interest"},
-            fallback_category="Professional",
-        )
-        return normalized or fallback
+            items = []
+        normalized = self._normalize_key_insights(items, cleaned)
+        if len(normalized) < 3:
+            existing_texts = {item["text"].strip().lower() for item in normalized}
+            for item in fallback:
+                if item["text"].strip().lower() in existing_texts:
+                    continue
+                normalized.append(item)
+                if len(normalized) >= 3:
+                    break
+        return normalized[:3] if normalized else fallback[:3]
 
     def extract_fun_facts(self, transcript: str, profile: dict[str, Any]) -> list[dict[str, Any]]:
         cleaned = transcript.strip()
-        fallback = self._fallback_section_insights(
-            cleaned,
-            "fun_facts",
-            ["Interest", "Personal", "Background", "Professional", "Goal"],
-        )
+        fallback = self._fallback_fun_facts(cleaned)
         if not cleaned:
             return fallback
         prompt = (
-            "You are extracting CRM persona insights from aggregated conversation notes.\n"
-            "Return strict JSON with one key: items.\n"
-            "items must be an array of distinct points with keys: text, source, category, highlighted_text.\n"
-            "Rules:\n"
-            "- Focus only on fun facts and personal interests relevant for rapport-building.\n"
-            "- Write each text point in third person.\n"
-            "- Keep each point concise and non-overlapping.\n"
-            "- Provide up to 6 points if available.\n"
-            "- highlighted_text must be an exact span copied from the notes that supports the point.\n"
-            "- Use only source values: Conversation, LinkedIn, Mutual Connection, Website, Social Media, Email.\n"
-            "- Use only category values: Professional, Personal, Interest, Background, Goal.\n\n"
-            f"Profile context: {json.dumps(profile)}\n\n"
-            f"Aggregated conversation notes:\n{cleaned}"
+            "Extract all useful fun facts about the person for rapport-building in a future meeting, "
+            "using only the conversation note.\n\n"
+            "Requirements:\n"
+            "- Return output strictly in valid JSON format.\n"
+            "- Output must be an array under the key \"fun_facts\".\n"
+            "- Include all distinct fun facts found in the conversation note.\n"
+            "- Each item must contain:\n"
+            "  - \"fact\": a concise, third-person rapport-building detail.\n"
+            "  - \"category\": one of [\"personal_interest\", \"hobby_lifestyle\", \"values_personality\", "
+            "\"background_tidbit\", \"relationship_hook\"].\n"
+            "  - \"quote\": an exact quote or minimally edited extract from the conversation note that supports the fact.\n"
+            "  - \"source\": must be \"conversation_note\".\n"
+            "- Focus on details that can help open a warm, relevant follow-up conversation.\n"
+            "- Avoid generic professional summaries unless they support personal rapport.\n"
+            "- Do not include redundant or overlapping points.\n\n"
+            f"Conversation note:\n{cleaned}"
         )
-        parsed = self._json_generation(prompt, {"items": fallback})
-        items = parsed.get("items")
+        parsed = self._json_generation(prompt, {"fun_facts": []})
+        items = parsed.get("fun_facts")
+        if not isinstance(items, list):
+            # Backward compatibility for older prompt shape.
+            items = parsed.get("items")
         if not isinstance(items, list):
             return fallback
+        category_map = {
+            "personal_interest": "Interest",
+            "hobby_lifestyle": "Personal",
+            "values_personality": "Personal",
+            "background_tidbit": "Background",
+            "relationship_hook": "Interest",
+        }
+        converted: list[dict[str, Any]] = []
+        for raw in items:
+            if not isinstance(raw, dict):
+                continue
+            fact_text = self._strip_context_prefix(str(raw.get("fact") or raw.get("text") or "").strip())
+            quote_text = self._strip_context_prefix(str(raw.get("quote") or raw.get("highlighted_text") or "").strip())
+            category_text = str(raw.get("category") or "").strip().lower()
+            converted.append(
+                {
+                    "text": fact_text,
+                    "source": "Conversation",
+                    "category": category_map.get(category_text, "Interest"),
+                    "highlighted_text": quote_text or fact_text,
+                }
+            )
         normalized = self._normalize_section_items(
-            items,
-            allowed_categories={"Interest", "Personal", "Background", "Professional", "Goal"},
+            converted,
+            allowed_categories={"Interest", "Personal", "Background"},
             fallback_category="Interest",
         )
-        return normalized or fallback
+        normalized = [item for item in normalized if self._is_fun_fact_candidate(item.get("text", ""))]
+        if len(normalized) < 3:
+            existing_texts = {item["text"].strip().lower() for item in normalized}
+            for item in fallback:
+                if item["text"].strip().lower() in existing_texts:
+                    continue
+                normalized.append(item)
+                if len(normalized) >= 3:
+                    break
+        return normalized if normalized else fallback
 
     def extract_suggested_actions(self, transcript: str, profile: dict[str, Any]) -> list[dict[str, Any]]:
         cleaned = transcript.strip()
@@ -156,32 +197,60 @@ class AIService:
         if not cleaned:
             return fallback
         prompt = (
-            "You are extracting action items from aggregated conversation notes.\n"
-            "Return strict JSON with one key: items.\n"
-            "items must be an array of distinct action points with keys: type, title, description, priority, due_date, highlighted_text.\n"
-            "Rules:\n"
-            "- Focus only on practical follow-up actions based on the notes.\n"
-            "- Keep items distinct and non-overlapping.\n"
-            "- Provide up to 6 actions if available.\n"
-            "- title must be highly specific and actionable, starting with a clear verb and concrete deliverable.\n"
-            "- description must be a specific execution step (what to send/do, to whom, and why) and must not be generic.\n"
-            "- Avoid vague wording like 'Follow up with X' or 'based on conversation highlights'.\n"
-            "- Use only type values: email, meeting, follow-up, introduction, share, call.\n"
-            "- Use only priority values: high, medium, low.\n"
-            "- due_date must be YYYY-MM-DD or null.\n"
-            "- highlighted_text must be one exact sentence or line copied verbatim from the notes that justifies the action.\n"
-            "- highlighted_text must appear exactly in the notes text.\n\n"
-            f"Profile context: {json.dumps(profile)}\n\n"
-            f"Aggregated conversation notes:\n{cleaned}"
+            "Extract all actionable items from the following conversation note.\n\n"
+            "Requirements:\n"
+            "- Return output strictly in valid JSON format.\n"
+            "- Output must be an array of objects under the key \"action_items\".\n"
+            "- Each action item object must contain:\n"
+            "  - \"action\": a clear, concise description of the task.\n"
+            "  - \"deadline\": explicit deadline if mentioned, otherwise null.\n"
+            "  - \"quote\": an exact quote or minimally edited extract from the conversation note that justifies the action.\n"
+            "- Only include items that require follow-up, delivery, scheduling, or sending something.\n"
+            "- Do not infer actions that are not grounded in the text.\n"
+            "- Preserve fidelity to the original wording in the \"quote\" field.\n"
+            "- Keep action items distinct and non-overlapping.\n"
+            "- Make each action specific and executable; avoid vague phrasing.\n"
+            "- If a deadline is explicit and calendar-based, use YYYY-MM-DD; otherwise use null.\n"
+            "- Include up to 8 action items if present.\n\n"
+            f"Conversation note:\n{cleaned}"
         )
-        parsed = self._json_generation(prompt, {"items": fallback})
-        items = parsed.get("items")
+        parsed = self._json_generation(prompt, {"action_items": []})
+        items = parsed.get("action_items")
         if not isinstance(items, list):
             items = []
-        normalized = self._normalize_action_items(items, cleaned)
+        normalized = self._normalize_prompt_action_items(items, cleaned)
         cue_actions = self._extract_actions_from_cues(cleaned, profile)
         merged = self._merge_actions(cue_actions, normalized)
         return merged or fallback
+
+    def _normalize_prompt_action_items(self, items: list[dict[str, Any]], transcript: str) -> list[dict[str, Any]]:
+        converted: list[dict[str, Any]] = []
+        for raw in items:
+            if not isinstance(raw, dict):
+                continue
+            action_text = self._strip_context_prefix(str(raw.get("action") or "").strip())
+            quote_text = self._strip_context_prefix(str(raw.get("quote") or "").strip())
+            deadline = raw.get("deadline")
+            if not action_text or not quote_text:
+                continue
+            due_date = None
+            if isinstance(deadline, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", deadline.strip()):
+                due_date = deadline.strip()
+            elif isinstance(deadline, str):
+                due_date = self._extract_due_date(deadline)
+
+            action_type = self._infer_action_type(action_text)
+            converted.append(
+                {
+                    "type": action_type,
+                    "title": action_text[:180],
+                    "description": action_text[:320],
+                    "priority": "high" if due_date else "medium",
+                    "due_date": due_date,
+                    "highlighted_text": quote_text[:260],
+                }
+            )
+        return self._normalize_action_items(converted, transcript)
 
     def recommend_contacts(self, query: str, contacts: list[dict[str, Any]]) -> dict[str, Any]:
         fallback = self._fallback_recommendations(query, contacts)
@@ -319,6 +388,30 @@ class AIService:
                     return label
         return labels[0]
 
+    def _strip_context_prefix(self, text: str) -> str:
+        if not text:
+            return ""
+        # Remove bracketed recording context prefixes such as:
+        # [In-Person | Conversation | Unknown location]
+        cleaned = re.sub(r"^\[[^\]]+\]\s*", "", text.strip())
+        return cleaned.strip()
+
+    def _is_fun_fact_candidate(self, text: str) -> bool:
+        lowered = text.lower()
+        personal_terms = (
+            "enjoy", "enjoys", "likes", "loves", "hobby", "outside work", "outside of work",
+            "family", "kids", "dog", "cat", "pet", "travel", "running", "marathon", "coffee",
+            "espresso", "music", "book", "reading", "cook", "cooking", "mentor", "mentoring",
+            "volunteer", "weekend", "sports", "fitness", "dinner"
+        )
+        business_terms = (
+            "vp", "director", "campaign", "enterprise", "product", "marketing", "roadmap",
+            "sales", "launch", "region", "kpi", "revenue", "pipeline", "analytics", "challenge"
+        )
+        has_personal = any(term in lowered for term in personal_terms)
+        has_business = any(term in lowered for term in business_terms)
+        return has_personal or not has_business
+
     def _fallback_contact_profile(self, transcript: str, provided: dict[str, Any]) -> dict[str, Any]:
         notes = self._fallback_summary(transcript, 3) if transcript else "Conversation captured."
         return {
@@ -340,8 +433,8 @@ class AIService:
         for raw in items:
             if not isinstance(raw, dict):
                 continue
-            text = str(raw.get("text") or "").strip()
-            highlighted_text = str(raw.get("highlighted_text") or "").strip()
+            text = self._strip_context_prefix(str(raw.get("text") or "").strip())
+            highlighted_text = self._strip_context_prefix(str(raw.get("highlighted_text") or "").strip())
             if not text:
                 continue
             dedupe_key = text.lower()
@@ -364,6 +457,42 @@ class AIService:
             )
         return normalized
 
+    def _normalize_key_insights(self, items: list[dict[str, Any]], transcript: str) -> list[dict[str, Any]]:
+        mapped: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        category_map = {
+            "professional_focus": "Professional",
+            "current_priority": "Goal",
+            "pain_point": "Background",
+            "personal_context": "Personal",
+            "relationship_opportunity": "Interest",
+        }
+        for raw in items:
+            if not isinstance(raw, dict):
+                continue
+            insight_text = self._strip_context_prefix(str(raw.get("insight") or "").strip())
+            quote_text = self._strip_context_prefix(str(raw.get("quote") or "").strip())
+            category_text = str(raw.get("category") or "").strip().lower()
+            if not insight_text or not quote_text:
+                continue
+            dedupe_key = insight_text.lower()
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            mapped_category = category_map.get(category_text, "Professional")
+            highlighted = quote_text
+            if quote_text not in transcript:
+                highlighted = self._pick_supporting_excerpt(transcript, insight_text, quote_text)
+            mapped.append(
+                {
+                    "text": insight_text[:220],
+                    "source": "Conversation",
+                    "category": mapped_category,
+                    "highlighted_text": highlighted[:260],
+                }
+            )
+        return mapped
+
     def _fallback_section_insights(
         self,
         transcript: str,
@@ -378,7 +507,8 @@ class AIService:
                 else "This contact shared personal interests."
             )
             sentences = [default_text]
-        selected = sentences[:6]
+        cleaned_sentences = [self._strip_context_prefix(sentence) for sentence in sentences]
+        selected = [sentence for sentence in cleaned_sentences if sentence][:6]
         return [
             {
                 "text": sentence[:220],
@@ -387,6 +517,22 @@ class AIService:
                 "highlighted_text": sentence[:260],
             }
             for sentence in selected
+        ]
+
+    def _fallback_fun_facts(self, transcript: str) -> list[dict[str, Any]]:
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", transcript) if s.strip()]
+        cleaned = [self._strip_context_prefix(sentence) for sentence in sentences]
+        selected = [sentence for sentence in cleaned if sentence and self._is_fun_fact_candidate(sentence)]
+        if not selected:
+            selected = ["This contact shared personal interests that can support rapport-building."]
+        return [
+            {
+                "text": sentence[:220],
+                "source": "Conversation",
+                "category": self._fallback_label(sentence, ["Interest", "Personal", "Background"]),
+                "highlighted_text": sentence[:260],
+            }
+            for sentence in selected[:8]
         ]
 
     def _fallback_insights_and_actions(self, transcript: str, profile: dict[str, Any]) -> dict[str, Any]:
@@ -475,6 +621,16 @@ class AIService:
             )
         return normalized
 
+    def _infer_action_type(self, action_text: str) -> str:
+        lowered = action_text.lower()
+        if any(term in lowered for term in ("schedule", "coffee", "meeting", "calendar", "call")):
+            return "meeting" if "meeting" in lowered or "coffee" in lowered or "calendar" in lowered else "call"
+        if any(term in lowered for term in ("introduce", "introduction", "forward")):
+            return "introduction"
+        if any(term in lowered for term in ("share", "send", "write-up", "blurb", "email", "draft")):
+            return "share"
+        return "follow-up"
+
     def _fallback_suggested_actions(self, transcript: str, profile: dict[str, Any]) -> list[dict[str, Any]]:
         sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", transcript) if s.strip()]
         first_sentence = sentences[0] if sentences else f"Follow up with {profile.get('name') or 'this contact'}."
@@ -507,7 +663,7 @@ class AIService:
             if score > best_score:
                 best_score = score
                 best_sentence = sentence
-        return best_sentence[:260]
+        return self._strip_context_prefix(best_sentence)[:260]
 
     def _extract_actions_from_cues(self, transcript: str, profile: dict[str, Any]) -> list[dict[str, Any]]:
         contact_name = profile.get("name") or "this contact"
