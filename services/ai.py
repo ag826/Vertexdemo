@@ -14,10 +14,10 @@ class AIService:
     def __init__(self) -> None:
         self._load_local_env()
         self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
-        self.model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-        self.base_url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
-        )
+        default_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+        self.chat_model = os.getenv("GEMINI_CHAT_MODEL", default_model).strip() or default_model
+        self.vision_model = os.getenv("GEMINI_VISION_MODEL", default_model).strip() or default_model
+        self.model = self.chat_model
 
     def _load_local_env(self) -> None:
         env_path = Path(__file__).resolve().parent.parent / ".env"
@@ -74,9 +74,11 @@ class AIService:
 
     def extract_insights_and_actions(self, transcript: str, profile: dict[str, Any]) -> dict[str, Any]:
         cleaned = transcript.strip()
+        key_facts = self.extract_things_to_know(cleaned, profile)
+        fun_facts = self.extract_fun_facts(cleaned, profile, key_facts)
         return {
-            "key_facts": self.extract_things_to_know(cleaned, profile),
-            "fun_facts": self.extract_fun_facts(cleaned, profile),
+            "key_facts": key_facts,
+            "fun_facts": fun_facts,
             "suggested_actions": self.extract_suggested_actions(cleaned, profile),
         }
 
@@ -123,11 +125,17 @@ class AIService:
                     break
         return normalized[:3] if normalized else fallback[:3]
 
-    def extract_fun_facts(self, transcript: str, profile: dict[str, Any]) -> list[dict[str, Any]]:
+    def extract_fun_facts(
+        self,
+        transcript: str,
+        profile: dict[str, Any],
+        key_facts: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
         cleaned = transcript.strip()
+        key_facts = key_facts or []
         fallback = self._fallback_fun_facts(cleaned)
         if not cleaned:
-            return fallback
+            return []
         prompt = (
             "Extract all useful fun facts about the person for rapport-building in a future meeting, "
             "using only the conversation note.\n\n"
@@ -137,12 +145,12 @@ class AIService:
             "- Include all distinct fun facts found in the conversation note.\n"
             "- Each item must contain:\n"
             "  - \"fact\": a concise, third-person rapport-building detail.\n"
-            "  - \"category\": one of [\"personal_interest\", \"hobby_lifestyle\", \"values_personality\", "
-            "\"background_tidbit\", \"relationship_hook\"].\n"
+            "  - \"category\": one of [\"hobby\", \"interest\", \"lifestyle\", \"personality_trait\", \"social_behavior\"].\n"
             "  - \"quote\": an exact quote or minimally edited extract from the conversation note that supports the fact.\n"
             "  - \"source\": must be \"conversation_note\".\n"
             "- Focus on details that can help open a warm, relevant follow-up conversation.\n"
             "- Avoid generic professional summaries unless they support personal rapport.\n"
+            "- Exclude asks, follow-ups, scheduling, deadlines, deliverables, and action items.\n"
             "- Do not include redundant or overlapping points.\n\n"
             f"Conversation note:\n{cleaned}"
         )
@@ -152,13 +160,18 @@ class AIService:
             # Backward compatibility for older prompt shape.
             items = parsed.get("items")
         if not isinstance(items, list):
-            return fallback
+            items = []
         category_map = {
-            "personal_interest": "Interest",
-            "hobby_lifestyle": "Personal",
-            "values_personality": "Personal",
-            "background_tidbit": "Background",
-            "relationship_hook": "Interest",
+            "hobby": "hobby",
+            "interest": "interest",
+            "lifestyle": "lifestyle",
+            "personality_trait": "personality_trait",
+            "social_behavior": "social_behavior",
+            "personal_interest": "interest",
+            "hobby_lifestyle": "lifestyle",
+            "values_personality": "personality_trait",
+            "background_tidbit": "interest",
+            "relationship_hook": "social_behavior",
         }
         converted: list[dict[str, Any]] = []
         for raw in items:
@@ -171,16 +184,21 @@ class AIService:
                 {
                     "text": fact_text,
                     "source": "Conversation",
-                    "category": category_map.get(category_text, "Interest"),
+                    "category": category_map.get(category_text, "interest"),
                     "highlighted_text": quote_text or fact_text,
                 }
             )
         normalized = self._normalize_section_items(
             converted,
-            allowed_categories={"Interest", "Personal", "Background"},
-            fallback_category="Interest",
+            allowed_categories={"hobby", "interest", "lifestyle", "personality_trait", "social_behavior"},
+            fallback_category="interest",
         )
-        normalized = [item for item in normalized if self._is_fun_fact_candidate(item.get("text", ""))]
+        normalized = [
+            item
+            for item in normalized
+            if self._is_fun_fact_candidate(item.get("text", ""))
+            and not self._is_action_like_statement(item.get("text", ""))
+        ]
         if len(normalized) < 3:
             existing_texts = {item["text"].strip().lower() for item in normalized}
             for item in fallback:
@@ -189,7 +207,8 @@ class AIService:
                 normalized.append(item)
                 if len(normalized) >= 3:
                     break
-        return normalized if normalized else fallback
+        filtered = self._dedupe_fun_facts_against_key_facts(normalized, key_facts)
+        return filtered
 
     def extract_suggested_actions(self, transcript: str, profile: dict[str, Any]) -> list[dict[str, Any]]:
         cleaned = transcript.strip()
@@ -266,7 +285,97 @@ class AIService:
         if not isinstance(result.get("recommendations"), list):
             return fallback
         result["message"] = result.get("message") or fallback["message"]
+        for item in result["recommendations"]:
+            if not isinstance(item, dict):
+                continue
+            explanation = str(item.get("explanation") or "").strip()
+            if explanation:
+                item["explanation"] = explanation[:220]
         return result
+
+    def answer_query_from_contacts(self, query: str, contacts: list[dict[str, Any]]) -> dict[str, Any]:
+        cleaned_query = query.strip()
+        if not cleaned_query:
+            return {
+                "message": "Ask me anything about your saved profiles, conversations, insights, or actions.",
+                "recommendations": [],
+            }
+        if not self.api_key:
+            return {
+                "message": (
+                    "Gemini is not configured. Add `GEMINI_API_KEY` to your `.env` and restart the API server "
+                    "to enable chat answers."
+                ),
+                "recommendations": [],
+            }
+        if not contacts:
+            return {
+                "message": (
+                    "I couldn't find any profiles yet. Add or import contacts first, then I can answer questions "
+                    "from their notes, insights, and action items."
+                ),
+                "recommendations": [],
+            }
+
+        recommendation_payload = self.recommend_contacts(cleaned_query, contacts)
+        recommendations = recommendation_payload.get("recommendations", [])
+        is_recommendation_query = self._is_recommendation_query(cleaned_query)
+        prepared_contacts = self._prepare_contacts_for_answering(contacts)
+        query_terms = [term for term in re.findall(r"[a-zA-Z]+", cleaned_query.lower()) if len(term) > 2]
+        name_matches = self._name_matches_from_query(query_terms, prepared_contacts)
+
+        # For person-specific questions, send full known profile context for that person.
+        if name_matches:
+            focus_contacts = name_matches[:2]
+            focused_prompt = (
+                "You are a warm, human networking assistant.\n"
+                "Answer the user's question using only the provided profile data.\n"
+                "Style rules:\n"
+                "- Sound natural and conversational, not robotic.\n"
+                "- Give a direct answer first, then short supporting bullets when helpful.\n"
+                "- If data is incomplete, say that plainly.\n"
+                "- Do not invent facts.\n\n"
+                f"User question:\n{cleaned_query}\n\n"
+                f"Focused person data:\n{json.dumps(focus_contacts)}"
+            )
+            focused_message = self._call_gemini(focused_prompt)
+            if not focused_message:
+                return {
+                    "message": (
+                        "I couldn't get a response from Gemini right now. "
+                        "Please try again in a few seconds."
+                    ),
+                    "recommendations": [],
+                }
+            return {
+                "message": focused_message.strip(),
+                "recommendations": recommendations if is_recommendation_query and isinstance(recommendations, list) else [],
+            }
+
+        prompt = (
+            "You are a networking assistant answering questions strictly from the user's saved CRM/profile data.\n"
+            "Rules:\n"
+            "- Only use facts present in the provided contacts JSON.\n"
+            "- If data is missing, say that clearly and suggest what to capture next.\n"
+            "- Provide a direct answer first, then up to 3 concise supporting bullets.\n"
+            "- Do not invent names, jobs, events, dates, or action items.\n"
+            "- Keep the answer under 140 words.\n\n"
+            f"User question:\n{cleaned_query}\n\n"
+            f"Contacts data:\n{json.dumps(prepared_contacts)}"
+        )
+        message = self._call_gemini(prompt)
+        if not message:
+            return {
+                "message": (
+                    "I couldn't get a response from Gemini right now. "
+                    "Please try again in a few seconds."
+                ),
+                "recommendations": [],
+            }
+        return {
+            "message": message.strip(),
+            "recommendations": recommendations if is_recommendation_query and isinstance(recommendations, list) else [],
+        }
 
     def draft_message(self, recipient_name: str, goal: str, context: str) -> dict[str, str]:
         fallback = self._fallback_draft(recipient_name, goal, context)
@@ -306,7 +415,7 @@ class AIService:
             ],
             "generationConfig": {"temperature": 0.1, "responseMimeType": "text/plain"},
         }
-        response = self._call_gemini_payload(payload)
+        response = self._call_gemini_payload(payload, model=self.vision_model)
         return response.strip() if response else ""
 
     def _text_generation(self, prompt: str, fallback: str) -> str:
@@ -329,13 +438,14 @@ class AIService:
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.3, "responseMimeType": "text/plain"},
         }
-        return self._call_gemini_payload(payload)
+        return self._call_gemini_payload(payload, model=self.chat_model)
 
-    def _call_gemini_payload(self, payload: dict[str, Any]) -> str | None:
+    def _call_gemini_payload(self, payload: dict[str, Any], model: str | None = None) -> str | None:
         if not self.api_key:
             return None
+        resolved_model = (model or self.chat_model or "gemini-1.5-flash").strip()
         req = request.Request(
-            f"{self.base_url}?key={parse.quote(self.api_key)}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/{resolved_model}:generateContent?key={parse.quote(self.api_key)}",
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -402,7 +512,8 @@ class AIService:
             "enjoy", "enjoys", "likes", "loves", "hobby", "outside work", "outside of work",
             "family", "kids", "dog", "cat", "pet", "travel", "running", "marathon", "coffee",
             "espresso", "music", "book", "reading", "cook", "cooking", "mentor", "mentoring",
-            "volunteer", "weekend", "sports", "fitness", "dinner"
+            "volunteer", "weekend", "sports", "fitness", "dinner", "cycling", "hiking",
+            "curious", "thoughtful", "collaborative", "calm", "warm", "community", "hosts"
         )
         business_terms = (
             "vp", "director", "campaign", "enterprise", "product", "marketing", "roadmap",
@@ -410,7 +521,52 @@ class AIService:
         )
         has_personal = any(term in lowered for term in personal_terms)
         has_business = any(term in lowered for term in business_terms)
-        return has_personal or not has_business
+        return has_personal and not has_business
+
+    def _is_action_like_statement(self, text: str) -> bool:
+        lowered = text.lower()
+        action_terms = (
+            "available for", "open to", "follow-up", "schedule", "requested", "request",
+            "asked", "send", "share", "write-up", "blurb", "deadline", "next tuesday",
+            "week of", "coffee in", "introduce", "introduction", "deliver", "proposal"
+        )
+        return any(term in lowered for term in action_terms)
+
+    def _dedupe_fun_facts_against_key_facts(
+        self,
+        fun_facts: list[dict[str, Any]],
+        key_facts: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        if not fun_facts:
+            return []
+        key_texts = [
+            self._normalize_for_compare(str(item.get("text") or ""))
+            for item in key_facts
+            if isinstance(item, dict)
+        ]
+        deduped: list[dict[str, Any]] = []
+        seen_fun: set[str] = set()
+        for item in fun_facts:
+            text = self._normalize_for_compare(str(item.get("text") or ""))
+            if not text or text in seen_fun:
+                continue
+            if any(
+                text == key_text
+                or text in key_text
+                or key_text in text
+                for key_text in key_texts
+                if key_text
+            ):
+                continue
+            seen_fun.add(text)
+            deduped.append(item)
+        return deduped
+
+    def _normalize_for_compare(self, text: str) -> str:
+        lowered = self._strip_context_prefix(text).lower()
+        lowered = re.sub(r"[^a-z0-9\s]", " ", lowered)
+        lowered = re.sub(r"\s+", " ", lowered).strip()
+        return lowered
 
     def _fallback_contact_profile(self, transcript: str, provided: dict[str, Any]) -> dict[str, Any]:
         notes = self._fallback_summary(transcript, 3) if transcript else "Conversation captured."
@@ -522,14 +678,18 @@ class AIService:
     def _fallback_fun_facts(self, transcript: str) -> list[dict[str, Any]]:
         sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", transcript) if s.strip()]
         cleaned = [self._strip_context_prefix(sentence) for sentence in sentences]
-        selected = [sentence for sentence in cleaned if sentence and self._is_fun_fact_candidate(sentence)]
+        selected = [
+            sentence
+            for sentence in cleaned
+            if sentence and self._is_fun_fact_candidate(sentence) and not self._is_action_like_statement(sentence)
+        ]
         if not selected:
-            selected = ["This contact shared personal interests that can support rapport-building."]
+            return []
         return [
             {
                 "text": sentence[:220],
                 "source": "Conversation",
-                "category": self._fallback_label(sentence, ["Interest", "Personal", "Background"]),
+                "category": "interest",
                 "highlighted_text": sentence[:260],
             }
             for sentence in selected[:8]
@@ -825,8 +985,187 @@ class AIService:
             )
         return {
             "message": "Here are the strongest matches from your network.",
-            "recommendations": recommendations,
+            "recommendations": [
+                {
+                    **item,
+                    "explanation": str(item.get("explanation") or "").strip()[:220],
+                }
+                for item in recommendations
+            ],
         }
+
+    def _is_recommendation_query(self, query: str) -> bool:
+        lowered = query.lower()
+        recommendation_terms = (
+            "who should", "who can", "who in my network", "recommend", "intro", "introduction",
+            "talk to", "connect with", "best contact", "best person"
+        )
+        return any(term in lowered for term in recommendation_terms)
+
+    def _prepare_contacts_for_answering(self, contacts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        prepared: list[dict[str, Any]] = []
+        for contact in contacts[:15]:
+            if not isinstance(contact, dict):
+                continue
+            key_facts = [str(item.get("text") or "").strip() for item in contact.get("keyFacts", []) if isinstance(item, dict)]
+            fun_facts = [str(item.get("text") or "").strip() for item in contact.get("funFacts", []) if isinstance(item, dict)]
+            actions = [
+                {
+                    "title": str(item.get("title") or "").strip(),
+                    "description": str(item.get("description") or "").strip(),
+                    "priority": str(item.get("priority") or "").strip(),
+                    "status": str(item.get("status") or "").strip(),
+                    "dueDate": item.get("dueDate"),
+                }
+                for item in contact.get("suggestedActions", [])
+                if isinstance(item, dict)
+            ]
+            conversations = contact.get("conversations", [])
+            latest_conversation = {}
+            if isinstance(conversations, list) and conversations:
+                first = conversations[0]
+                if isinstance(first, dict):
+                    latest_conversation = {
+                        "occasion": str(first.get("occasion") or "").strip(),
+                        "date": str(first.get("date") or "").strip(),
+                        "location": str(first.get("location") or "").strip(),
+                    }
+            prepared.append(
+                {
+                    "id": contact.get("id"),
+                    "name": str(contact.get("name") or "").strip(),
+                    "title": str(contact.get("title") or "").strip(),
+                    "company": str(contact.get("company") or "").strip(),
+                    "location": str(contact.get("location") or "").strip(),
+                    "notes": str(contact.get("notes") or "").strip()[:420],
+                    "keyFacts": [item for item in key_facts if item][:5],
+                    "funFacts": [item for item in fun_facts if item][:5],
+                    "suggestedActions": [item for item in actions if item.get("title")][:5],
+                    "latestConversation": latest_conversation,
+                    "conversations": [
+                        {
+                            "occasion": str(item.get("occasion") or "").strip(),
+                            "date": str(item.get("date") or "").strip(),
+                            "location": str(item.get("location") or "").strip(),
+                            "fullTranscript": str(item.get("fullTranscript") or "").strip()[:900],
+                        }
+                        for item in (conversations[:3] if isinstance(conversations, list) else [])
+                        if isinstance(item, dict)
+                    ],
+                }
+            )
+        return prepared
+
+    def _fallback_profile_answer(
+        self,
+        query: str,
+        contacts: list[dict[str, Any]],
+        recommendations: list[dict[str, Any]],
+    ) -> str:
+        lowered_query = query.lower()
+        lowered_query_terms = [term for term in re.findall(r"[a-zA-Z]+", lowered_query) if len(term) > 2]
+        if self._is_recommendation_query(query) and recommendations:
+            top = recommendations[:3]
+            lines = []
+            for item in top:
+                name = item.get("name") or "Unknown contact"
+                role = item.get("role") or "Role not listed"
+                company = item.get("company") or "Company not listed"
+                reason = item.get("explanation") or "Relevant based on your saved profile data."
+                lines.append(f"- {name}: {role} at {company}. {reason}")
+            return "Best matches from your saved profiles:\n" + "\n".join(lines)
+
+        name_matches = self._name_matches_from_query(lowered_query_terms, contacts)
+        asks_for_interests = any(
+            term in lowered_query
+            for term in ("like to do", "likes to", "hobby", "hobbies", "interest", "interests", "outside work")
+        )
+        if name_matches and asks_for_interests:
+            contact = name_matches[0]
+            fun_facts = [item for item in contact.get("funFacts", []) if isinstance(item, str) and item.strip()]
+            if fun_facts:
+                selected = fun_facts[:3]
+                lines = [f"- {self._clean_snippet(item)}" for item in selected]
+                return f"{contact.get('name') or 'This contact'}'s interests from your saved profiles:\n" + "\n".join(lines)
+            return (
+                f"I found {contact.get('name') or 'this contact'}, but I don't see clear hobbies/interests saved yet. "
+                "Add personal details in notes or conversation transcripts, then refresh analysis."
+            )
+
+        ranked: list[tuple[int, dict[str, Any]]] = []
+        for contact in contacts:
+            haystack = " ".join(
+                [
+                    str(contact.get("name") or ""),
+                    str(contact.get("title") or ""),
+                    str(contact.get("company") or ""),
+                    str(contact.get("location") or ""),
+                    str(contact.get("notes") or ""),
+                    " ".join(contact.get("keyFacts") or []),
+                    " ".join(contact.get("funFacts") or []),
+                    " ".join(
+                        f"{item.get('title','')} {item.get('description','')}"
+                        for item in (contact.get("suggestedActions") or [])
+                        if isinstance(item, dict)
+                    ),
+                ]
+            ).lower()
+            score = sum(1 for term in lowered_query_terms if term in haystack)
+            ranked.append((score, contact))
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        matches = name_matches or [contact for score, contact in ranked if score > 0][:3]
+        if not matches:
+            return (
+                "I couldn't find a direct answer in your current profile data. "
+                "Try asking about a specific contact name, company, insight, or action item."
+            )
+        lines = []
+        for contact in matches:
+            label = self._contact_label(contact)
+            details = self._contact_detail_snippet(contact)
+            if details:
+                lines.append(f"- {label}: {details}")
+            else:
+                lines.append(f"- {label}")
+        return "From your saved profiles, here are the most relevant details:\n" + "\n".join(lines)
+
+    def _name_matches_from_query(self, query_terms: list[str], contacts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        ranked: list[tuple[int, dict[str, Any]]] = []
+        query_set = set(query_terms)
+        for contact in contacts:
+            name_words = [word for word in re.findall(r"[a-zA-Z]+", str(contact.get("name") or "").lower()) if len(word) > 2]
+            if not name_words:
+                continue
+            overlap = sum(1 for word in name_words if word in query_set)
+            if overlap > 0:
+                ranked.append((overlap, contact))
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        return [contact for _, contact in ranked]
+
+    def _contact_label(self, contact: dict[str, Any]) -> str:
+        name = str(contact.get("name") or "").strip() or "Unknown contact"
+        role = str(contact.get("title") or "").strip()
+        company = str(contact.get("company") or "").strip()
+        if role and company:
+            return f"{name} ({role} at {company})"
+        if role:
+            return f"{name} ({role})"
+        if company:
+            return f"{name} ({company})"
+        return name
+
+    def _contact_detail_snippet(self, contact: dict[str, Any]) -> str:
+        fun_facts = [self._clean_snippet(item) for item in (contact.get("funFacts") or []) if isinstance(item, str) and item.strip()]
+        key_facts = [self._clean_snippet(item) for item in (contact.get("keyFacts") or []) if isinstance(item, str) and item.strip()]
+        notes = self._clean_snippet(str(contact.get("notes") or ""))
+        for candidate in [*fun_facts, *key_facts, notes]:
+            if candidate:
+                return candidate[:160]
+        return ""
+
+    def _clean_snippet(self, text: str) -> str:
+        cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+        return cleaned.rstrip(" -:;,")
 
     def _fallback_draft(self, recipient_name: str, goal: str, context: str) -> dict[str, str]:
         subject = f"Following up on {goal}".strip()

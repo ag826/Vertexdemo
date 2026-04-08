@@ -13,7 +13,17 @@ export interface Insight {
   id: number;
   text: string;
   source: 'Conversation' | 'LinkedIn' | 'Mutual Connection' | 'Website' | 'Social Media' | 'Email';
-  category: 'Professional' | 'Personal' | 'Interest' | 'Background' | 'Goal';
+  category:
+    | 'Professional'
+    | 'Personal'
+    | 'Interest'
+    | 'Background'
+    | 'Goal'
+    | 'hobby'
+    | 'interest'
+    | 'lifestyle'
+    | 'personality_trait'
+    | 'social_behavior';
   transcript?: TranscriptDetail | null;
 }
 

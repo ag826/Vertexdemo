@@ -21,6 +21,40 @@ export class ApiError extends Error {
   }
 }
 
+function formatApiErrorMessage(detail: unknown, fallback: string): string {
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    const joined = detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') {
+          const record = item as Record<string, unknown>;
+          const msg = typeof record.msg === 'string' ? record.msg : '';
+          const loc = Array.isArray(record.loc) ? record.loc.join('.') : '';
+          return [loc, msg].filter(Boolean).join(': ');
+        }
+        return '';
+      })
+      .filter(Boolean)
+      .join('; ');
+    if (joined) return joined;
+  }
+  if (detail && typeof detail === 'object') {
+    const record = detail as Record<string, unknown>;
+    if (typeof record.message === 'string' && record.message.trim()) {
+      return record.message;
+    }
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
 function getStoredToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -49,7 +83,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const text = await response.text();
   const data = text ? JSON.parse(text) : {};
   if (!response.ok) {
-    throw new ApiError(response.status, data.detail || 'Request failed');
+    throw new ApiError(response.status, formatApiErrorMessage(data.detail, 'Request failed'));
   }
   return data as T;
 }
@@ -242,7 +276,7 @@ export async function uploadAudioForTranscription(audio: Blob) {
   const text = await response.text();
   const data = text ? JSON.parse(text) : {};
   if (!response.ok) {
-    throw new ApiError(response.status, data.detail || 'Transcription failed');
+    throw new ApiError(response.status, formatApiErrorMessage(data.detail, 'Transcription failed'));
   }
   return data as { transcript: string };
 }
@@ -266,7 +300,7 @@ export async function uploadImageForOcr(image: File) {
   const text = await response.text();
   const data = text ? JSON.parse(text) : {};
   if (!response.ok) {
-    throw new ApiError(response.status, data.detail || 'OCR failed');
+    throw new ApiError(response.status, formatApiErrorMessage(data.detail, 'OCR failed'));
   }
   return data as { text: string };
 }

@@ -141,9 +141,32 @@ class ExportRequest(BaseModel):
     format: str = Field(pattern="^(json|csv)$")
 
 
+def require_current_user(
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+) -> dict[str, Any]:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+    token = authorization.split(" ", 1)[1]
+    with get_db() as conn:
+        session = conn.execute(
+            """
+            SELECT s.*, u.id AS user_id, u.email, u.name
+            FROM sessions s
+            JOIN users u ON u.id = s.user_id
+            WHERE s.token_hash = ?
+            """,
+            (hash_token(token),),
+        ).fetchone()
+        if not session:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
+        if datetime.fromisoformat(session["expires_at"]) < datetime.now(timezone.utc):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired")
+        return {"id": session["user_id"], "email": session["email"], "name": session["name"]}
+
+
 @app.post("/api/transcriptions/upload")
 async def upload_transcription(
-    current_user: CurrentUser,
+    _current_user: Annotated[dict[str, Any], Depends(require_current_user)],
     audio: UploadFile = File(...),
 ) -> dict[str, str]:
     content_type = audio.content_type or ""
@@ -161,7 +184,7 @@ async def upload_transcription(
 
 @app.post("/api/ocr/upload")
 async def upload_ocr(
-    current_user: CurrentUser,
+    _current_user: Annotated[dict[str, Any], Depends(require_current_user)],
     image: UploadFile = File(...),
 ) -> dict[str, str]:
     content_type = image.content_type or ""
@@ -214,6 +237,156 @@ def _ensure_defaults_for_user(user_id: int) -> None:
                     """,
                     (user_id, provider, state, to_json(scopes), now),
                 )
+
+        contact_count = conn.execute(
+            "SELECT COUNT(1) AS count FROM contacts WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        if contact_count and int(contact_count["count"] or 0) == 0:
+            _seed_demo_contacts(conn, user_id)
+
+
+def _seed_demo_contacts(conn: Any, user_id: int) -> None:
+    now = utc_now()
+    date_added = datetime.now().strftime("%Y-%m-%d")
+    created_at = datetime.now(timezone.utc)
+
+    demos: list[dict[str, Any]] = [
+        {
+            "name": "Reid Hoffman",
+            "title": "Co-Founder",
+            "company": "LinkedIn",
+            "location": "San Francisco, CA",
+            "linkedin_url": "https://www.linkedin.com/in/reidhoffman/",
+            "notes": (
+                "Demo profile seeded after signup to showcase a complete persona card.\n"
+                "Public profile link points to Reid Hoffman and includes full sample notes, insights, and actions.\n"
+                "Use this record to preview end-to-end app behavior before adding real contacts."
+            ),
+            "social": {
+                "linkedin": "https://www.linkedin.com/in/reidhoffman/",
+                "twitter": "https://twitter.com/reidhoffman",
+                "github": "",
+                "instagram": "",
+            },
+            "recording": {
+                "platform": "In-Person",
+                "occasion": "Product strategy networking chat",
+                "location": "San Francisco",
+                "duration_seconds": 780,
+                "transcript": (
+                    "This demo conversation is attached to Reid Hoffman to show how the app renders complete persona details. "
+                    "Reid discussed product strategy, distribution, and clear messaging for AI products. "
+                    "Reid emphasized practical outcomes, founder storytelling, and strong follow-through on introductions. "
+                    "In this demo scenario, Reid said he enjoys long-distance cycling on weekends and keeps a reading list of science-fiction novels. "
+                    "In this demo scenario, Reid shared that he hosts small founder dinners to connect people with shared interests. "
+                    "In this demo scenario, Reid described his style as calm, curious, and highly collaborative in conversations. "
+                    "Reid is open to a 30-minute follow-up coffee in San Francisco the week of April 21. "
+                    "Reid offered to introduce me to a relevant operator if I send a concise intro blurb. "
+                    "Reid requested a short write-up with strong B2B AI narrative examples by next Tuesday."
+                ),
+                "days_ago": 6,
+            },
+        },
+        {
+            "name": "Satya Nadella",
+            "title": "Chairman and CEO",
+            "company": "Microsoft",
+            "location": "Redmond, WA",
+            "linkedin_url": "https://www.linkedin.com/in/satyanadella/",
+            "notes": (
+                "Demo profile seeded after signup to showcase complete fields in the UI.\n"
+                "Public profile link points to Satya Nadella and includes sample transcript-derived insights and actions.\n"
+                "Use this record as a reference for what a fully processed contact looks like."
+            ),
+            "social": {
+                "linkedin": "https://www.linkedin.com/in/satyanadella/",
+                "twitter": "https://twitter.com/satyanadella",
+                "github": "",
+                "instagram": "",
+            },
+            "recording": {
+                "platform": "Video Call",
+                "occasion": "Follow-up discussion on AI copilots",
+                "location": "Zoom",
+                "duration_seconds": 1020,
+                "transcript": (
+                    "This demo conversation is attached to Satya Nadella to illustrate complete profile analysis in the app. "
+                    "Satya discussed practical AI adoption, trust, accessibility, and measurable product outcomes. "
+                    "Satya emphasized aligning product narrative to customer value and responsible deployment. "
+                    "In this demo scenario, Satya said he enjoys reading poetry and reflective writing in the early morning. "
+                    "In this demo scenario, Satya shared that he follows a simple routine with daily walks and family time. "
+                    "In this demo scenario, Satya described his communication style as thoughtful, humble, and focused on listening first. "
+                    "Satya is available for a 30-minute follow-up coffee in Redmond the week of May 12. "
+                    "Satya requested a concise write-up with two or three AI narrative examples focused on trust and execution."
+                ),
+                "days_ago": 2,
+            },
+        },
+    ]
+
+    for demo in demos:
+        conn.execute(
+            """
+            INSERT INTO contacts
+            (user_id, name, title, company, location, linkedin_url, profile_image_url, notes, date_added, conversation_duration_seconds, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                demo["name"],
+                demo["title"],
+                demo["company"],
+                demo["location"],
+                demo["linkedin_url"],
+                _default_avatar(demo["name"]),
+                demo["notes"],
+                date_added,
+                int(demo["recording"]["duration_seconds"]),
+                now,
+                now,
+            ),
+        )
+        contact_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+        for platform, value in (demo.get("social") or {}).items():
+            if not value:
+                continue
+            conn.execute(
+                """
+                INSERT INTO contact_social_profiles (contact_id, platform, profile_url, handle, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (contact_id, platform, value, value, now),
+            )
+
+        recording = demo["recording"]
+        duration_seconds = int(recording["duration_seconds"])
+        started_at = (created_at - timedelta(days=int(recording.get("days_ago", 0)))).isoformat()
+        stopped_at = (datetime.fromisoformat(started_at) + timedelta(seconds=duration_seconds)).isoformat()
+        conn.execute(
+            """
+            INSERT INTO recordings
+            (user_id, contact_id, source_type, provider, status, platform, occasion, location, transcript_text, started_at, stopped_at, duration_seconds, created_at, updated_at)
+            VALUES (?, ?, 'manual', 'manual', 'processing', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                contact_id,
+                recording["platform"],
+                recording["occasion"],
+                recording["location"],
+                recording["transcript"],
+                started_at,
+                stopped_at,
+                duration_seconds,
+                now,
+                now,
+            ),
+        )
+        recording_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        recording_row = conn.execute("SELECT * FROM recordings WHERE id = ?", (recording_id,)).fetchone()
+        _store_recording_analysis(conn, user_id, contact_id, recording_row, recording["transcript"])
 
 
 def _create_session(user_id: int) -> str:
@@ -451,7 +624,7 @@ def _rebuild_contact_analysis(conn: Any, user_id: int, contact_id: int) -> None:
         "notes": contact["notes"],
     }
     key_facts = ai_service.extract_things_to_know(combined_text, profile)
-    fun_facts = ai_service.extract_fun_facts(combined_text, profile)
+    fun_facts = ai_service.extract_fun_facts(combined_text, profile, key_facts)
     suggested_actions = ai_service.extract_suggested_actions(combined_text, profile)
     summarized_notes = ai_service.summarize_text(combined_text, max_sentences=4)
 
@@ -1069,8 +1242,7 @@ def complete_action(action_id: int, payload: ActionCompleteRequest, current_user
 def assistant_recommend(payload: AssistantRecommendRequest, current_user: CurrentUser) -> dict[str, Any]:
     with get_db() as conn:
         contacts = _all_contacts_for_ai(conn, current_user["id"])
-    recommendations = ai_service.recommend_contacts(payload.query, contacts)
-    return recommendations
+    return ai_service.answer_query_from_contacts(payload.query, contacts)
 
 
 @app.post("/api/assistant/messages")
@@ -1082,21 +1254,26 @@ def assistant_message(payload: AssistantMessageRequest, current_user: CurrentUse
             (session_id, payload.role, payload.content, utc_now()),
         )
         contacts = _all_contacts_for_ai(conn, current_user["id"])
-        recommendations = ai_service.recommend_contacts(payload.content, contacts)
+        assistant_reply = ai_service.answer_query_from_contacts(payload.content, contacts)
         conn.execute(
             """
             INSERT INTO chat_messages (chat_session_id, role, content, recommendations_json, created_at)
             VALUES (?, 'assistant', ?, ?, ?)
             """,
-            (session_id, recommendations["message"], to_json(recommendations["recommendations"]), utc_now()),
+            (
+                session_id,
+                assistant_reply["message"],
+                to_json(assistant_reply.get("recommendations", [])),
+                utc_now(),
+            ),
         )
         conn.execute("UPDATE chat_sessions SET updated_at = ? WHERE id = ?", (utc_now(), session_id))
     return {
         "chatSessionId": session_id,
         "message": {
             "role": "assistant",
-            "content": recommendations["message"],
-            "recommendations": recommendations["recommendations"],
+            "content": assistant_reply["message"],
+            "recommendations": assistant_reply.get("recommendations", []),
         },
     }
 
@@ -1127,7 +1304,8 @@ def get_settings(current_user: CurrentUser) -> dict[str, Any]:
         "privacy": from_json(settings["privacy_json"], {}),
         "exportAvailable": True,
         "aiConfigured": bool(ai_service.api_key),
-        "aiModel": ai_service.model,
+        "aiModel": ai_service.chat_model,
+        "aiVisionModel": ai_service.vision_model,
     }
 
 

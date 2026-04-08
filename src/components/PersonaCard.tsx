@@ -81,6 +81,16 @@ export function PersonaCard({ contact, onBack, onUpdateNotes, onExecuteAction, o
         return 'bg-cyan-50 text-cyan-700 border-cyan-200';
       case 'Background':
         return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'hobby':
+        return 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200';
+      case 'interest':
+        return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'lifestyle':
+        return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+      case 'personality_trait':
+        return 'bg-rose-50 text-rose-700 border-rose-200';
+      case 'social_behavior':
+        return 'bg-sky-50 text-sky-700 border-sky-200';
       default:
         return 'bg-sky-50 text-sky-700 border-sky-200';
     }
@@ -98,6 +108,16 @@ export function PersonaCard({ contact, onBack, onUpdateNotes, onExecuteAction, o
         return '📚';
       case 'Goal':
         return '🚀';
+      case 'hobby':
+        return '🎨';
+      case 'interest':
+        return '✨';
+      case 'lifestyle':
+        return '🌿';
+      case 'personality_trait':
+        return '🧠';
+      case 'social_behavior':
+        return '🤝';
     }
   };
 
@@ -118,8 +138,23 @@ export function PersonaCard({ contact, onBack, onUpdateNotes, onExecuteAction, o
     }
   };
 
+  const normalizeForCompare = (value: string) => value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const sectionTextAbove = new Set([
+    ...contact.keyFacts.map((item) => normalizeForCompare(item.text)),
+    ...contact.suggestedActions.map((item) => normalizeForCompare(`${item.title} ${item.description}`)),
+  ]);
+  const filteredFunFacts = contact.funFacts.filter((item) => {
+    const normalized = normalizeForCompare(item.text);
+    if (!normalized) return false;
+    for (const existing of sectionTextAbove) {
+      if (normalized === existing || normalized.includes(existing) || existing.includes(normalized)) {
+        return false;
+      }
+    }
+    return true;
+  });
   const visibleKeyFacts = showAllKeyFacts ? contact.keyFacts : contact.keyFacts.slice(0, 3);
-  const visibleFunFacts = showAllFunFacts ? contact.funFacts : contact.funFacts.slice(0, 3);
+  const visibleFunFacts = showAllFunFacts ? filteredFunFacts : filteredFunFacts.slice(0, 3);
 
   return (
     <div className="min-h-screen bg-white">
@@ -240,18 +275,14 @@ export function PersonaCard({ contact, onBack, onUpdateNotes, onExecuteAction, o
             )}
           </section>
 
-          <section className="bg-purple-50 rounded-xl p-6 border border-purple-200 shadow-sm">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center shadow-sm">
-                <Lightbulb className="w-5 h-5 text-purple-600" />
+          {filteredFunFacts.length > 0 && (
+            <section className="bg-purple-50 rounded-xl p-6 border border-purple-200 shadow-sm">
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center shadow-sm">
+                  <Lightbulb className="w-5 h-5 text-purple-600" />
+                </div>
+                <h2 className="text-slate-900 font-semibold text-lg">Fun Facts & Interests</h2>
               </div>
-              <h2 className="text-slate-900 font-semibold text-lg">Fun Facts & Interests</h2>
-            </div>
-            {contact.funFacts.length === 0 ? (
-              <div className="rounded-lg bg-white border border-slate-200 px-4 py-4 text-sm text-slate-500">
-                No personal insights extracted yet.
-              </div>
-            ) : (
               <ul className="space-y-4">
                 {visibleFunFacts.map((insight) => (
                   <li key={insight.id}>
@@ -285,17 +316,17 @@ export function PersonaCard({ contact, onBack, onUpdateNotes, onExecuteAction, o
                   </li>
                 ))}
               </ul>
-            )}
-            {contact.funFacts.length > 3 && (
-              <button
-                type="button"
-                onClick={() => setShowAllFunFacts((prev) => !prev)}
-                className="mt-4 rounded-lg border border-purple-300 bg-white px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100"
-              >
-                {showAllFunFacts ? 'Show less' : `Show all (${contact.funFacts.length})`}
-              </button>
-            )}
-          </section>
+              {filteredFunFacts.length > 3 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllFunFacts((prev) => !prev)}
+                  className="mt-4 rounded-lg border border-purple-300 bg-white px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100"
+                >
+                  {showAllFunFacts ? 'Show less' : `Show all (${filteredFunFacts.length})`}
+                </button>
+              )}
+            </section>
+          )}
 
           <section className="bg-slate-50 rounded-xl p-6 border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between mb-4">

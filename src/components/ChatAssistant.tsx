@@ -101,7 +101,7 @@ export function ChatAssistant({ onViewContact }: ChatAssistantProps) {
                     : 'bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100'
                 }`}
               >
-                <p className="text-sm leading-relaxed">{message.content}</p>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
               </div>
 
               {message.recommendations && message.recommendations.length > 0 && (
