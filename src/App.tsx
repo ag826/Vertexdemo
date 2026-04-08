@@ -36,6 +36,12 @@ function AppShell() {
   const [selectedContactError, setSelectedContactError] = useState('');
 
   const loadCurrentUser = async () => {
+    const storedToken = localStorage.getItem('vertex-token');
+    if (!storedToken) {
+      setIsBooting(false);
+      setAuthError('');
+      return;
+    }
     try {
       const response = await getMe();
       setUser(response.user);
@@ -76,6 +82,8 @@ function AppShell() {
   }, [user, searchQuery]);
 
   const handleAuthSubmit = async (payload: { mode: 'login' | 'register'; name?: string; email: string; password: string }) => {
+    setAuthError('');
+    setContactsError('');
     const response = payload.mode === 'register'
       ? await register({ name: payload.name || '', email: payload.email, password: payload.password })
       : await login({ email: payload.email, password: payload.password });

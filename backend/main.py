@@ -287,6 +287,22 @@ def _seed_demo_contacts(conn: Any, user_id: int) -> None:
                 ),
                 "days_ago": 6,
             },
+            "seed_key_facts": [
+                "Reid emphasizes practical outcomes, clear positioning, and strong founder storytelling for AI products.",
+                "Reid is focused on distribution and making product narratives actionable for teams.",
+            ],
+            "seed_fun_facts": [
+                "Reid enjoys long-distance cycling on weekends.",
+                "Reid keeps a reading list of science-fiction novels and hosts founder dinners.",
+            ],
+            "seed_actions": [
+                {
+                    "type": "meeting",
+                    "title": "Schedule 30-minute follow-up with Reid",
+                    "description": "Send two concrete time options for a short follow-up coffee in San Francisco.",
+                    "priority": "high",
+                }
+            ],
         },
         {
             "name": "Satya Nadella",
@@ -322,6 +338,22 @@ def _seed_demo_contacts(conn: Any, user_id: int) -> None:
                 ),
                 "days_ago": 2,
             },
+            "seed_key_facts": [
+                "Satya focuses on practical AI adoption, trust, accessibility, and measurable outcomes.",
+                "Satya stresses aligning product narrative to customer value and responsible deployment.",
+            ],
+            "seed_fun_facts": [
+                "Satya enjoys reading poetry and reflective writing in the early morning.",
+                "Satya follows a simple routine with daily walks and family time.",
+            ],
+            "seed_actions": [
+                {
+                    "type": "share",
+                    "title": "Send trust-focused AI narrative examples to Satya",
+                    "description": "Share a concise write-up with 2-3 examples focused on trust and execution.",
+                    "priority": "high",
+                }
+            ],
         },
     ]
 
@@ -386,7 +418,106 @@ def _seed_demo_contacts(conn: Any, user_id: int) -> None:
         )
         recording_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
         recording_row = conn.execute("SELECT * FROM recordings WHERE id = ?", (recording_id,)).fetchone()
-        _store_recording_analysis(conn, user_id, contact_id, recording_row, recording["transcript"])
+
+        transcript_id = _ensure_transcript_for_recording(conn, recording_row, recording["transcript"])
+        conn.execute(
+            "UPDATE recordings SET status = 'completed', updated_at = ? WHERE id = ?",
+            (utc_now(), recording_id),
+        )
+
+        now_segment = utc_now()
+        event_date = datetime.now().strftime("%Y-%m-%d")
+        event_time = datetime.now().strftime("%H:%M")
+
+        for item_text in demo.get("seed_key_facts", []):
+            conn.execute(
+                """
+                INSERT INTO transcript_segments (transcript_id, platform, occasion, event_date, event_time, location, text, highlighted_text, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    transcript_id,
+                    recording["platform"],
+                    "Seeded demo conversation",
+                    event_date,
+                    event_time,
+                    recording["location"],
+                    recording["transcript"],
+                    item_text[:260],
+                    now_segment,
+                ),
+            )
+            segment_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+            conn.execute(
+                """
+                INSERT INTO insights (contact_id, transcript_segment_id, text, source, category, section, confidence_score, created_by, created_at)
+                VALUES (?, ?, ?, 'Conversation', 'Professional', 'key_fact', 0.8, 'seed', ?)
+                """,
+                (contact_id, segment_id, item_text[:220], now_segment),
+            )
+
+        for item_text in demo.get("seed_fun_facts", []):
+            conn.execute(
+                """
+                INSERT INTO transcript_segments (transcript_id, platform, occasion, event_date, event_time, location, text, highlighted_text, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    transcript_id,
+                    recording["platform"],
+                    "Seeded demo conversation",
+                    event_date,
+                    event_time,
+                    recording["location"],
+                    recording["transcript"],
+                    item_text[:260],
+                    now_segment,
+                ),
+            )
+            segment_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+            conn.execute(
+                """
+                INSERT INTO insights (contact_id, transcript_segment_id, text, source, category, section, confidence_score, created_by, created_at)
+                VALUES (?, ?, ?, 'Conversation', 'interest', 'fun_fact', 0.8, 'seed', ?)
+                """,
+                (contact_id, segment_id, item_text[:220], now_segment),
+            )
+
+        for action in demo.get("seed_actions", []):
+            conn.execute(
+                """
+                INSERT INTO transcript_segments (transcript_id, platform, occasion, event_date, event_time, location, text, highlighted_text, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    transcript_id,
+                    recording["platform"],
+                    "Seeded demo conversation",
+                    event_date,
+                    event_time,
+                    recording["location"],
+                    recording["transcript"],
+                    str(action.get("description") or action.get("title") or "")[:260],
+                    now_segment,
+                ),
+            )
+            segment_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+            conn.execute(
+                """
+                INSERT INTO suggested_actions (contact_id, transcript_segment_id, type, title, description, priority, due_date, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, NULL, 'open', ?, ?)
+                """,
+                (
+                    contact_id,
+                    segment_id,
+                    str(action.get("type") or "follow-up"),
+                    str(action.get("title") or "Follow up")[:180],
+                    str(action.get("description") or "Send a follow-up message.")[:320],
+                    str(action.get("priority") or "medium"),
+                    now_segment,
+                    now_segment,
+                ),
+            )
 
 
 def _create_session(user_id: int) -> str:
