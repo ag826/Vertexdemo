@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+
+node_modules/
+build/
+dist/
+
+data/vertex.db
+__pycache__/
+*.pyc
+*.pyo
+
+*.swp
+*.swo
+.DS_Store
